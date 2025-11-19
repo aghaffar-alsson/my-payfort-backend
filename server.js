@@ -43,13 +43,13 @@ function generateMerchantReference(length = 16) {
 app.post("/createFormPayLoad", async (req, res) => {
   try {
     const orderID = generateMerchantReference(12);
-    const RqPhrase = "$2y$10$.FGuYmcji";
+    const RqPhrase = "$2y$10$Ta0481EDF";
 
     let formPayLoad = {
       service_command: "PURCHASE",
       language: "en",
-      merchant_identifier: "TbPedXZs",
-      access_code: "kU6fcpiJQuECccKXisdF",
+      merchant_identifier: "4ada67b5",
+      access_code: "M4sQwfE5v1O5QkjocgPW",
       return_url: "https://httpbin.org/post",
       merchant_reference: orderID,
     };
