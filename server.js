@@ -8,7 +8,7 @@ app.use(express.json());
 // ⭐ Correct CORS configuration
 app.use(
   cors({
-    origin: ["http://localhost:5174", "https://my-payfort-api.onrender.com"],
+    origin: ["http://localhost:5174","http://localhost:5173", "https://my-payfort-api.onrender.com"],
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
@@ -79,4 +79,5 @@ app.post("/createFormPayLoad", async (req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
