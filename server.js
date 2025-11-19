@@ -46,7 +46,7 @@ app.post("/createFormPayLoad", async (req, res) => {
     const RqPhrase = "$2y$10$Ta0481EDF";
 
     let formPayLoad = {
-      service_command: "PURCHASE",
+      service_command: "AUTHORIZATION",
       language: "en",
       merchant_identifier: "4ada67b5",
       access_code: "M4sQwfE5v1O5QkjocgPW",
@@ -77,3 +77,4 @@ app.post("/createFormPayLoad", async (req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
