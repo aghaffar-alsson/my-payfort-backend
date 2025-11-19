@@ -3,14 +3,24 @@ const cors = require("cors");
 const crypto = require("crypto");
 const app = express();
 
-app.use(cors());
 app.use(express.json());
 
-// ---------- SIGNATURE HELPERS ----------
+// ⭐ Correct CORS configuration
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://my-payfort-api.onrender.com"],
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
+// ⭐ Handle OPTIONS preflight
+app.options("*", cors());
+
+// ---------- SIGNATURE HELPERS ----------
 function createSignature(params, requestPhrase) {
   const sorted = Object.keys(params).sort();
-  const concatenated = sorted.map(key => `${key}=${params[key]}`).join("");
+  const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
   const toHash = `${requestPhrase}${concatenated}${requestPhrase}`;
   return crypto.createHash("sha256").update(toHash).digest("hex");
 }
@@ -30,7 +40,6 @@ function generateMerchantReference(length = 16) {
 }
 
 // ---------- MAIN PAYFORT ENDPOINT ----------
-
 app.post("/createFormPayLoad", async (req, res) => {
   try {
     const orderID = generateMerchantReference(12);
@@ -45,14 +54,13 @@ app.post("/createFormPayLoad", async (req, res) => {
       merchant_reference: orderID,
     };
 
-    // Encrypt order details
     const details = `${req.body.amount},${req.body.currency},${req.body.email}`;
     const encryptedDetails = encryptOrderDetails(details, RqPhrase);
 
-    formPayLoad.return_url =
-      `${formPayLoad.return_url}?data=${encodeURIComponent(encryptedDetails)}`;
+    formPayLoad.return_url = `${formPayLoad.return_url}?data=${encodeURIComponent(
+      encryptedDetails
+    )}`;
 
-    // APS Signature
     formPayLoad.signature = createSignature(formPayLoad, RqPhrase);
 
     return res.status(200).json({
@@ -66,6 +74,6 @@ app.post("/createFormPayLoad", async (req, res) => {
   }
 });
 
-// Render/Railway will use process.env.PORT
+// Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
