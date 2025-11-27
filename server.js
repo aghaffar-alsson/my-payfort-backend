@@ -77,9 +77,27 @@ app.post("/createFormPayLoad", async (req, res) => {
   }
 });
 
+//here to verify the payment process
+app.post("/payment/verify", (req, res) => {
+  const encodedData = req.body.data;
+  const decoded = JSON.parse(Buffer.from(encodedData, "base64").toString("utf8"));
+
+  const expectedSignature = createSignature(decoded);
+
+  if (decoded.signature !== expectedSignature) {
+    return res.json({ status: "failed" });
+  }
+
+  if (decoded.status === "14") {
+    return res.json({ status: "success" });
+  }
+
+  return res.json({ status: "failed" });
+});
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
