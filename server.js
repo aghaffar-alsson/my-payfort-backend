@@ -2,13 +2,19 @@ const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
 const app = express();
+const bodyParser = require('body-parser')
+
+const MERCHANT_PASS_PHRASE = "$2y$10$Ta0481EDF"
+
+app.use(bodyParser.urlencoded({ extended: true })); // APS sends POST as form
+app.use(bodyParser.json());
 
 app.use(express.json());
 
 // ⭐ Correct CORS configuration
 app.use(
   cors({
-    origin: ["http://localhost:5174","http://localhost:5173", "https://my-payfort-api.onrender.com"],
+    origin: ["http://localhost:5173", "http://localhost:5174", "https://my-payfort-api.onrender.com"],
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
@@ -23,6 +29,21 @@ function createSignature(params, requestPhrase) {
   const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
   const toHash = `${requestPhrase}${concatenated}${requestPhrase}`;
   return crypto.createHash("sha256").update(toHash).digest("hex");
+}
+
+// Helper to verify signature
+function verifySignature(params) {
+  const { signature, ...data } = params;
+
+  const sortedKeys = Object.keys(data).sort();
+  let baseString = MERCHANT_PASS_PHRASE;
+  sortedKeys.forEach(key => {
+    baseString += `${key}=${data[key]}`;
+  });
+  baseString += MERCHANT_PASS_PHRASE;
+
+  const hash = crypto.createHash('sha256').update(baseString).digest('hex');
+  return hash === signature;
 }
 
 function encryptOrderDetails(text, secretKey) {
@@ -45,37 +66,55 @@ app.post("/createFormPayLoad", async (req, res) => {
     const orderID = generateMerchantReference(12);
     const RqPhrase = "$2y$10$Ta0481EDF";
 
+    // Build Payfort payload
     let formPayLoad = {
       command: "PURCHASE",
       language: "en",
       merchant_identifier: "4ada67b5",
       access_code: "M4sQwfE5v1O5QkjocgPW",
       merchant_reference: orderID,
-      amount: req.body.amount * 100, // Convert to smallest currency
+      amount: req.body.amount * 100, // smallest currency
       currency: req.body.currency,
       customer_email: req.body.email,
-      // return_url: "https://httpbin.org/post",
-      return_url: "http://localhost:5173/#/checkout-result",
+
+      // ⚠ Backend callback instead of frontend
+      return_url: "https://my-payfort-backend.onrender.com/payfort-callback",
+      return_method: "POST", // important
     };
 
-    // encrypt details if you want
-    const details = `${req.body.amount},${req.body.currency},${req.body.email}`;
-    const encryptedDetails = encryptOrderDetails(details, RqPhrase);
-    formPayLoad.return_url += `?data=${encodeURIComponent(encryptedDetails)}`;
-
-    // Must include amount, currency, customer_email
+    // Generate signature for Payfort request
     formPayLoad.signature = createSignature(formPayLoad, RqPhrase);
 
-    return res.status(200).json({
-      success: true,
-      message: "Signature created successfully",
-      payload: formPayLoad,
-    });
-  } catch (err) {
-    console.error("ERROR:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    // Send response to frontend
+    res.json(formPayLoad);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error creating Payfort payload" });
   }
 });
+
+// Payfort callback endpoint
+app.post("/payfort-callback", (req, res) => {
+  const data = req.body;
+  const RqPhrase = "$2y$10$Ta0481EDF";
+
+  // Verify signature
+  if (!verifySignature(data, RqPhrase)) {
+    console.log("Invalid signature:", data);
+    return res.status(400).send("Invalid signature");
+  }
+
+  // Map APS status
+  const isSuccess = data.status === "14"; // APS success code
+
+  // Redirect to frontend with short safe query params
+  const redirectUrl = `http://localhost:5173/checkout-result?status=${
+    isSuccess ? "success" : "failed"
+  }&amount=${data.amount}&fort_id=${data.fort_id}&merchant_reference=${data.merchant_reference}&response_message=${encodeURIComponent(data.response_message || "")}`;
+
+  res.redirect(302, redirectUrl);
+});
+
 
 //here to verify the payment process
 app.post("/payment/verify", (req, res) => {
@@ -94,13 +133,10 @@ app.post("/payment/verify", (req, res) => {
 
   return res.json({ status: "failed" });
 });
+
+
+
+
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-
-
-
-
-
-
