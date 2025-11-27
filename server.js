@@ -32,19 +32,22 @@ function createSignature(params, requestPhrase) {
 }
 
 // Helper to verify signature
-function verifySignature(params) {
+function verifySignature(params, requestPhrase) {
   const { signature, ...data } = params;
 
   const sortedKeys = Object.keys(data).sort();
-  let baseString = MERCHANT_PASS_PHRASE;
+  let baseString = requestPhrase;
   sortedKeys.forEach(key => {
-    baseString += `${key}=${data[key]}`;
+    if (data[key] !== null && data[key] !== "") {
+      baseString += `${key}=${data[key]}`;
+    }
   });
-  baseString += MERCHANT_PASS_PHRASE;
+  baseString += requestPhrase;
 
   const hash = crypto.createHash('sha256').update(baseString).digest('hex');
   return hash === signature;
 }
+
 
 function encryptOrderDetails(text, secretKey) {
   const toHash = `${secretKey}${text}${secretKey}`;
@@ -121,7 +124,8 @@ app.post("/payment/verify", (req, res) => {
   const encodedData = req.body.data;
   const decoded = JSON.parse(Buffer.from(encodedData, "base64").toString("utf8"));
 
-  const expectedSignature = createSignature(decoded);
+  const expectedSignature = createSignature(decoded, MERCHANT_PASS_PHRASE);
+
 
   if (decoded.signature !== expectedSignature) {
     return res.json({ status: "failed" });
