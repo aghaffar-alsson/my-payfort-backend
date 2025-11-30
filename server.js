@@ -118,6 +118,15 @@ app.post("/createFormPayLoad", async (req, res) => {
 //   res.redirect(302, redirectUrl);
 // });
 
+app.all("/payfort-callback", (req, res, next) => {
+  console.log("========== PAYFORT CALLBACK RECEIVED ==========");
+  console.log("Method:", req.method);
+  console.log("Query params:", req.query);
+  console.log("Body:", req.body);
+  console.log("===============================================");
+  next();
+});
+
 function handlePayfortCallback(req, res) {
   try {
     const encodedData = req.method === "GET"
