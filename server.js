@@ -129,46 +129,55 @@ app.all("/payfort-callback", (req, res, next) => {
 
 function handlePayfortCallback(req, res) {
   try {
-    const encodedData = req.method === "GET"
-      ? req.query.data
-      : req.body.data;
+    console.log("=== Payfort callback received ===");
 
-    if (!encodedData) {
-      return res.status(400).send("Missing data parameter");
+    // Payfort now sends RAW fields (no `data`)
+    const payload = req.method === "GET" ? req.query : req.body;
+
+    console.log("Callback Payload:", payload);
+
+    // --- Extract signature ---
+    const responseSignature = payload.signature;
+    if (!responseSignature) {
+      return res.status(400).send("Missing signature");
     }
 
-    const decoded = JSON.parse(
-      Buffer.from(encodedData, "base64").toString("utf8")
-    );
+    // --- Prepare fields for signature validation ---
+    const copied = { ...payload };
+    delete copied.signature;
 
-    // Validate signature (APS response signature verification)
-    if (!verifySignature(decoded)) {
+    // Validate signature exactly like Payfort specs
+    const calculatedSignature = createSignature(copied, RqPhrase);
+
+    if (calculatedSignature !== responseSignature) {
       return res.status(400).send("Invalid signature");
     }
 
-    const isSuccess = decoded.status === "14";
+    // --- Success flag ---
+    const isSuccess = payload.status === "14";
 
+    // --- Redirect user to frontend result page ---
     const redirectUrl = `http://localhost:5173/checkout-result?status=${
       isSuccess ? "success" : "failed"
-    }&amount=${decoded.amount}&fort_id=${
-      decoded.fort_id
+    }&amount=${payload.amount}&fort_id=${
+      payload.fort_id
     }&merchant_reference=${
-      decoded.merchant_reference
+      payload.merchant_reference
     }&response_message=${encodeURIComponent(
-      decoded.response_message || ""
+      payload.response_message || ""
     )}`;
 
     return res.redirect(302, redirectUrl);
 
   } catch (err) {
-    console.error(err);
+    console.error("Callback error:", err);
     res.status(500).send("Callback error");
   }
 }
 
-// Accept BOTH GET and POST
 app.get("/payfort-callback", handlePayfortCallback);
 app.post("/payfort-callback", handlePayfortCallback);
+
 
 //here to verify the payment process
 app.post("/payment/verify", (req, res) => {
