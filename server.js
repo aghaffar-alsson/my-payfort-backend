@@ -82,7 +82,7 @@ app.post("/createFormPayLoad", async (req, res) => {
 
       // ⚠ Backend callback instead of frontend
       return_url: "https://my-payfort-backend.onrender.com/payfort-callback",
-      return_method: "POST", // important
+      //return_method: "POST", // important
     };
 
     // Generate signature for Payfort request
@@ -144,3 +144,4 @@ app.post("/payment/verify", (req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
