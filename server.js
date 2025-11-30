@@ -32,17 +32,17 @@ function createSignature(params, requestPhrase) {
 }
 
 // Helper to verify signature
-function verifySignature(params, requestPhrase) {
+function verifySignature(params, responsePhrase) {
   const { signature, ...data } = params;
 
   const sortedKeys = Object.keys(data).sort();
-  let baseString = requestPhrase;
+  let baseString = responsePhrase;
   sortedKeys.forEach(key => {
     if (data[key] !== null && data[key] !== "") {
       baseString += `${key}=${data[key]}`;
     }
   });
-  baseString += requestPhrase;
+  baseString += responsePhrase;
 
   const hash = crypto.createHash('sha256').update(baseString).digest('hex');
   return hash === signature;
@@ -129,7 +129,7 @@ app.all("/payfort-callback", (req, res, next) => {
 
 function handlePayfortCallback(req, res) {
   try {
-    const RqPhrase = "$2y$10$Ta0481EDF";
+    const responsePhrase = "$2y$10$aotEpWOtP";
 
     console.log("=== Payfort callback received ===");
 
@@ -149,7 +149,7 @@ function handlePayfortCallback(req, res) {
     delete copied.signature;
 
     // Validate signature exactly like Payfort specs
-    const calculatedSignature = createSignature(copied, RqPhrase);
+    const calculatedSignature = createSignature(copied, responsePhrase);
 
     if (calculatedSignature !== responseSignature) {
       return res.status(400).send("Invalid signature");
