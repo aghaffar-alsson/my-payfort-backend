@@ -82,7 +82,7 @@ app.post("/createFormPayLoad", async (req, res) => {
 
       // ⚠ Backend callback instead of frontend
       return_url: "https://my-payfort-backend.onrender.com/payfort-callback",
-      //return_method: "POST", // important
+      // return_method: "POST", // important
     };
 
     // Generate signature for Payfort request
@@ -97,27 +97,40 @@ app.post("/createFormPayLoad", async (req, res) => {
 });
 
 // Payfort callback endpoint
-app.post("/payfort-callback", (req, res) => {
-  const data = req.body;
-  const RqPhrase = "$2y$10$Ta0481EDF";
+// app.post("/payfort-callback", (req, res) => {
+//   const data = req.body;
+//   const RqPhrase = "$2y$10$Ta0481EDF";
 
-  // Verify signature
-  if (!verifySignature(data, RqPhrase)) {
-    console.log("Invalid signature:", data);
+//   // Verify signature
+//   if (!verifySignature(data, RqPhrase)) {
+//     console.log("Invalid signature:", data);
+//     return res.status(400).send("Invalid signature");
+//   }
+
+//   // Map APS status
+//   const isSuccess = data.status === "14"; // APS success code
+
+//   // Redirect to frontend with short safe query params
+//   const redirectUrl = `http://localhost:5173/checkout-result?status=${
+//     isSuccess ? "success" : "failed"
+//   }&amount=${data.amount}&fort_id=${data.fort_id}&merchant_reference=${data.merchant_reference}&response_message=${encodeURIComponent(data.response_message || "")}`;
+
+//   res.redirect(302, redirectUrl);
+// });
+
+app.get("/payfort-callback", (req, res) => {
+  const encodedData = req.query.data; // Payfort sends base64 encoded payload
+  const decoded = JSON.parse(Buffer.from(encodedData, "base64").toString("utf8"));
+
+  if (!verifySignature(decoded, MERCHANT_PASS_PHRASE)) {
     return res.status(400).send("Invalid signature");
   }
 
-  // Map APS status
-  const isSuccess = data.status === "14"; // APS success code
-
-  // Redirect to frontend with short safe query params
-  const redirectUrl = `http://localhost:5173/checkout-result?status=${
-    isSuccess ? "success" : "failed"
-  }&amount=${data.amount}&fort_id=${data.fort_id}&merchant_reference=${data.merchant_reference}&response_message=${encodeURIComponent(data.response_message || "")}`;
+  const isSuccess = decoded.status === "14";
+  const redirectUrl = `http://localhost:5173/checkout-result?status=${isSuccess ? "success":"failed"}&amount=${decoded.amount}&fort_id=${decoded.fort_id}&merchant_reference=${decoded.merchant_reference}&response_message=${encodeURIComponent(decoded.response_message || "")}`;
 
   res.redirect(302, redirectUrl);
 });
-
 
 //here to verify the payment process
 app.post("/payment/verify", (req, res) => {
@@ -144,4 +157,3 @@ app.post("/payment/verify", (req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
