@@ -119,17 +119,39 @@ app.post("/createFormPayLoad", async (req, res) => {
 // });
 
 app.get("/payfort-callback", (req, res) => {
-  const encodedData = req.query.data; // Payfort sends base64 encoded payload
-  const decoded = JSON.parse(Buffer.from(encodedData, "base64").toString("utf8"));
+  try {
+    const encodedData = req.query.data; // APS sends data=xxxx
+    if (!encodedData) {
+      return res.status(400).send("Missing data parameter");
+    }
 
-  if (!verifySignature(decoded, MERCHANT_PASS_PHRASE)) {
-    return res.status(400).send("Invalid signature");
+    // Decode base64
+    const decoded = JSON.parse(
+      Buffer.from(encodedData, "base64").toString("utf8")
+    );
+
+    // Verify signature
+    if (!verifySignature(decoded)) {
+      return res.status(400).send("Invalid signature");
+    }
+
+    const isSuccess = decoded.status === "14";
+
+    const redirectUrl = `http://localhost:5173/checkout-result?status=${
+      isSuccess ? "success" : "failed"
+    }&amount=${decoded.amount}&fort_id=${
+      decoded.fort_id
+    }&merchant_reference=${
+      decoded.merchant_reference
+    }&response_message=${encodeURIComponent(
+      decoded.response_message || ""
+    )}`;
+
+    return res.redirect(302, redirectUrl);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Callback error");
   }
-
-  const isSuccess = decoded.status === "14";
-  const redirectUrl = `http://localhost:5173/checkout-result?status=${isSuccess ? "success":"failed"}&amount=${decoded.amount}&fort_id=${decoded.fort_id}&merchant_reference=${decoded.merchant_reference}&response_message=${encodeURIComponent(decoded.response_message || "")}`;
-
-  res.redirect(302, redirectUrl);
 });
 
 //here to verify the payment process
