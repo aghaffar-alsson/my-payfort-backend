@@ -129,6 +129,8 @@ app.all("/payfort-callback", (req, res, next) => {
 
 function handlePayfortCallback(req, res) {
   try {
+    const RqPhrase = "$2y$10$Ta0481EDF";
+
     console.log("=== Payfort callback received ===");
 
     // Payfort now sends RAW fields (no `data`)
