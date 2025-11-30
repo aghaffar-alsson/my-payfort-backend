@@ -118,19 +118,21 @@ app.post("/createFormPayLoad", async (req, res) => {
 //   res.redirect(302, redirectUrl);
 // });
 
-app.get("/payfort-callback", (req, res) => {
+function handlePayfortCallback(req, res) {
   try {
-    const encodedData = req.query.data; // APS sends data=xxxx
+    const encodedData = req.method === "GET"
+      ? req.query.data
+      : req.body.data;
+
     if (!encodedData) {
       return res.status(400).send("Missing data parameter");
     }
 
-    // Decode base64
     const decoded = JSON.parse(
       Buffer.from(encodedData, "base64").toString("utf8")
     );
 
-    // Verify signature
+    // Validate signature (APS response signature verification)
     if (!verifySignature(decoded)) {
       return res.status(400).send("Invalid signature");
     }
@@ -148,11 +150,16 @@ app.get("/payfort-callback", (req, res) => {
     )}`;
 
     return res.redirect(302, redirectUrl);
+
   } catch (err) {
     console.error(err);
     res.status(500).send("Callback error");
   }
-});
+}
+
+// Accept BOTH GET and POST
+app.get("/payfort-callback", handlePayfortCallback);
+app.post("/payfort-callback", handlePayfortCallback);
 
 //here to verify the payment process
 app.post("/payment/verify", (req, res) => {
