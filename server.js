@@ -174,7 +174,7 @@ async function sendParentEmail(data) {
       // });
       const transporter = nodemailer.createTransport({
         host: "smtp.gmail.com",
-        port: 465,
+        port: 578,
         secure: true,
         auth: {
           user: "fees@alsson.com",
@@ -291,3 +291,4 @@ app.post("/payment/verify", (req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
