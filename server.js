@@ -173,18 +173,16 @@ async function sendParentEmail(data) {
       //   },
       // });
       const transporter = nodemailer.createTransport({
-        host: "smtp.office365.com",
-        port: 587,
-        secure: false,   // MUST be false for Office365
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
         auth: {
           user: "fees@alsson.com",
           pass: "gwwowluzlabnfyqw",
         },
-        tls: {
-          ciphers: "SSLv3"
-        }
       });
-    const html = `
+  
+      const html = `
       <h2>Payment Receipt</h2>
       <p>Dear Parent,</p>
       <p>Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.</p>
