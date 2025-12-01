@@ -165,6 +165,9 @@ async function sendParentEmail(data) {
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
+          host: "pop.gmail.com",
+          port: 587,
+          secure: true,          
           user: 'fees@alsson.com',
           pass: 'gwwowluzlabnfyqw',
         },
@@ -185,7 +188,7 @@ async function sendParentEmail(data) {
     await transporter.sendMail({
       from: "fees@alsson.com",
       to: data.customer_email, 
-      bcc: "feesemails@alsson.com",
+      // bcc: "feesemails@alsson.com",
       subject: "Payment Receipt",
       html
     });
