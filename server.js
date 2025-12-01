@@ -121,7 +121,7 @@ app.post("/createFormPayLoad", async (req, res) => {
 
 async function logPaymentAction(payload) {
   try {
-    const pool = await sql.connect(dbConfig);
+    const pool = await sql.connect(sqlConfig);
 
     await pool.request()
       .input("fort_id", sql.VarChar, payload.fort_id)
@@ -240,3 +240,4 @@ app.post("/payment/verify", (req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
