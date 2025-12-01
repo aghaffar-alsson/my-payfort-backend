@@ -173,15 +173,17 @@ async function sendParentEmail(data) {
       //   },
       // });
       const transporter = nodemailer.createTransport({
-        host: "mail.alsson.com",
+        host: "smtp.office365.com",
         port: 587,
-        secure: true,
+        secure: false,   // MUST be false for Office365
         auth: {
           user: "fees@alsson.com",
           pass: "gwwowluzlabnfyqw",
         },
+        tls: {
+          ciphers: "SSLv3"
+        }
       });
-
     const html = `
       <h2>Payment Receipt</h2>
       <p>Dear Parent,</p>
