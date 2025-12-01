@@ -160,11 +160,11 @@ function handlePayfortCallback(req, res) {
 
     // --- Redirect user to frontend result page ---
     const redirectUrl = `http://localhost:5173/checkout-result?status=${isSuccess ? "success" : "failed"}
-      &amount=${decoded.amount}
-      &fort_id=${decoded.fort_id}
-      &merchant_reference=${decoded.merchant_reference}
-      &response_message=${encodeURIComponent(decoded.response_message || "")}
-      &customer_email=${encodeURIComponent(decoded.customer_email || "")}`;
+      &amount=${payload.amount}
+      &fort_id=${payload.fort_id}
+      &merchant_reference=${payload.merchant_reference}
+      &response_message=${encodeURIComponent(payload.response_message || "")}
+      &customer_email=${encodeURIComponent(payload.customer_email || "")}`;
 
       return res.redirect(302, redirectUrl);
 
