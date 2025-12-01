@@ -3,8 +3,10 @@ const cors = require("cors");
 const crypto = require("crypto");
 const app = express();
 const bodyParser = require('body-parser')
-
+const nodemailer = require("nodemailer");
+const sql = require("mssql");
 const MERCHANT_PASS_PHRASE = "$2y$10$Ta0481EDF"
+
 
 app.use(bodyParser.urlencoded({ extended: true })); // APS sends POST as form
 app.use(bodyParser.json());
@@ -23,6 +25,17 @@ app.use(
 // ⭐ Handle OPTIONS preflight
 app.options("*", cors());
 
+const sqlConfig = {
+  server: "41.128.168.249",
+  database: "feeswebtmp",
+  user: "sa",
+  password: "Finance@2025",
+  options: {
+    encrypt: false,
+    trustServerCertificate: true,
+  },
+  requestTimeout: 15000,
+};
 // ---------- SIGNATURE HELPERS ----------
 function createSignature(params, requestPhrase) {
   const sorted = Object.keys(params).sort();
@@ -96,6 +109,47 @@ app.post("/createFormPayLoad", async (req, res) => {
   }
 });
 
+async function logPaymentAction(payload) {
+  try {
+    const pool = await sql.connect(dbConfig);
+
+    await pool.request()
+      .input("fort_id", sql.VarChar, payload.fort_id)
+      .input("merchant_reference", sql.VarChar, payload.merchant_reference)
+      .input("amount", sql.Int, payload.amount)
+      .input("customer_email", sql.VarChar, payload.customer_email)
+      .input("payment_option", sql.VarChar, payload.payment_option)
+      .input("response_message", sql.VarChar, payload.response_message)
+      .input("actiondate", sql.Date, new Date().toLocaleString())
+      //{new Date().toLocaleString()}
+      .query(`
+        INSERT INTO OnlinePayfortLog (
+          fort_id,
+          merchant_reference,
+          amount,
+          customer_email,
+          payment_option,
+          response_message,
+          actiondate
+        ) VALUES (
+          @fort_id,
+          @merchant_reference,
+          @amount,
+          @customer_email,
+          @payment_option,
+          @response_message,
+          @actiondate
+        )
+      `);
+
+    console.log("💾 Payment logged to SQL Server");
+
+  } catch (err) {
+    console.error("SQL Error:", err);
+  }
+}
+
+
 app.all("/payfort-callback", (req, res, next) => {
   console.log("========== PAYFORT CALLBACK RECEIVED ==========");
   console.log("Method:", req.method);
@@ -125,7 +179,9 @@ function handlePayfortCallback(req, res) {
     }
 
     const isSuccess = payload.status === "14";
-
+    if (isSuccess){
+      logPaymentAction(payload)
+    }
     const redirectUrl =
       `http://localhost:5173/checkout-result?status=${isSuccess ? "success" : "failed"}` +
       `&amount=${payload.amount}` +
@@ -167,6 +223,15 @@ app.post("/payment/verify", (req, res) => {
 });
 
 
+
+//Configure NODEMAILER
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: 'fees@alsson.com',
+    pass: 'gwwowluzlabnfyqw',
+  },
+});
 
 
 // Start server
