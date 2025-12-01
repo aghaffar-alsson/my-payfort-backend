@@ -36,6 +36,16 @@ const sqlConfig = {
   },
   requestTimeout: 15000,
 };
+
+//Configure NODEMAILER
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: 'fees@alsson.com',
+    pass: 'gwwowluzlabnfyqw',
+  },
+});
+
 // ---------- SIGNATURE HELPERS ----------
 function createSignature(params, requestPhrase) {
   const sorted = Object.keys(params).sort();
@@ -224,14 +234,7 @@ app.post("/payment/verify", (req, res) => {
 
 
 
-//Configure NODEMAILER
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: 'fees@alsson.com',
-    pass: 'gwwowluzlabnfyqw',
-  },
-});
+
 
 
 // Start server
