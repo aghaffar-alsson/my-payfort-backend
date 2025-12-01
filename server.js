@@ -96,28 +96,6 @@ app.post("/createFormPayLoad", async (req, res) => {
   }
 });
 
-// Payfort callback endpoint
-// app.post("/payfort-callback", (req, res) => {
-//   const data = req.body;
-//   const RqPhrase = "$2y$10$Ta0481EDF";
-
-//   // Verify signature
-//   if (!verifySignature(data, RqPhrase)) {
-//     console.log("Invalid signature:", data);
-//     return res.status(400).send("Invalid signature");
-//   }
-
-//   // Map APS status
-//   const isSuccess = data.status === "14"; // APS success code
-
-//   // Redirect to frontend with short safe query params
-//   const redirectUrl = `http://localhost:5173/checkout-result?status=${
-//     isSuccess ? "success" : "failed"
-//   }&amount=${data.amount}&fort_id=${data.fort_id}&merchant_reference=${data.merchant_reference}&response_message=${encodeURIComponent(data.response_message || "")}`;
-
-//   res.redirect(302, redirectUrl);
-// });
-
 app.all("/payfort-callback", (req, res, next) => {
   console.log("========== PAYFORT CALLBACK RECEIVED ==========");
   console.log("Method:", req.method);
@@ -132,47 +110,38 @@ function handlePayfortCallback(req, res) {
     const responsePhrase = "$2y$10$aotEpWOtP";
 
     console.log("=== Payfort callback received ===");
-
-    // Payfort now sends RAW fields (no `data`)
     const payload = req.method === "GET" ? req.query : req.body;
-
     console.log("Callback Payload:", payload);
 
-    // --- Extract signature ---
-    const responseSignature = payload.signature;
-    if (!responseSignature) {
+    if (!payload.signature) {
       return res.status(400).send("Missing signature");
     }
 
-    // --- Prepare fields for signature validation ---
-    const copied = { ...payload };
-    delete copied.signature;
-
-    // Validate signature exactly like Payfort specs
-    const calculatedSignature = createSignature(copied, responsePhrase);
-
-    if (calculatedSignature !== responseSignature) {
+    // Validate signature correctly
+    const isValid = verifySignature(payload, responsePhrase);
+    if (!isValid) {
+      console.log("Invalid signature");
       return res.status(400).send("Invalid signature");
     }
 
-    // --- Success flag ---
     const isSuccess = payload.status === "14";
 
-    // --- Redirect user to frontend result page ---
-    const redirectUrl = `http://localhost:5173/checkout-result?status=${isSuccess ? "success" : "failed"}
-      &amount=${payload.amount}
-      &fort_id=${payload.fort_id}
-      &merchant_reference=${payload.merchant_reference}
-      &response_message=${encodeURIComponent(payload.response_message || "")}
-      &customer_email=${encodeURIComponent(payload.customer_email || "")}`;
+    const redirectUrl =
+      `http://localhost:5173/checkout-result?status=${isSuccess ? "success" : "failed"}` +
+      `&amount=${payload.amount}` +
+      `&fort_id=${payload.fort_id}` +
+      `&merchant_reference=${payload.merchant_reference}` +
+      `&response_message=${encodeURIComponent(payload.response_message || "")}` +
+      `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;
 
-      return res.redirect(302, redirectUrl);
+    return res.redirect(302, redirectUrl);
 
   } catch (err) {
     console.error("Callback error:", err);
     res.status(500).send("Callback error");
   }
 }
+
 
 app.get("/payfort-callback", handlePayfortCallback);
 app.post("/payfort-callback", handlePayfortCallback);
