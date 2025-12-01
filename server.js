@@ -162,14 +162,23 @@ async function logPaymentAction(payload) {
 
 async function sendParentEmail(data) {
   try {
+      // const transporter = nodemailer.createTransport({
+      //   service: "gmail",
+      //   auth: {
+      //     host: "pop.gmail.com",
+      //     port: 587,
+      //     secure: true,          
+      //     user: 'fees@alsson.com',
+      //     pass: 'gwwowluzlabnfyqw',
+      //   },
+      // });
       const transporter = nodemailer.createTransport({
-        service: "gmail",
+        host: "mail.alsson.com",
+        port: 587,
+        secure: true,
         auth: {
-          host: "pop.gmail.com",
-          port: 587,
-          secure: true,          
-          user: 'fees@alsson.com',
-          pass: 'gwwowluzlabnfyqw',
+          user: "fees@alsson.com",
+          pass: "gwwowluzlabnfyqw",
         },
       });
 
