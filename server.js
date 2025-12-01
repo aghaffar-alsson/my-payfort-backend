@@ -38,13 +38,13 @@ const sqlConfig = {
 };
 
 //Configure NODEMAILER
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: 'fees@alsson.com',
-    pass: 'gwwowluzlabnfyqw',
-  },
-});
+// const transporter = nodemailer.createTransport({
+//   service: "gmail",
+//   auth: {
+//     user: 'fees@alsson.com',
+//     pass: 'gwwowluzlabnfyqw',
+//   },
+// });
 
 // ---------- SIGNATURE HELPERS ----------
 function createSignature(params, requestPhrase) {
@@ -160,6 +160,43 @@ async function logPaymentAction(payload) {
 }
 
 
+async function sendParentEmail(data) {
+  try {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: 'fees@alsson.com',
+          pass: 'gwwowluzlabnfyqw',
+        },
+      });
+
+    const html = `
+      <h2>Payment Receipt</h2>
+      <p>Dear Parent,</p>
+      <p>Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.</p>
+      <p><strong>Amounting:</strong> ${(data.amount / 100).toFixed(2)} EGP</p>
+      <p><strong>Your FORT ID:</strong> ${data.fort_id}</p>
+      <p><strong>Transaction Reference:</strong> ${data.merchant_reference}</p>
+      <p><strong>Transaction Status:</strong> ${data.response_message}</p>
+      <br/>
+      <p>Thank you for your purchase.</p>
+    `;
+
+    await transporter.sendMail({
+      from: "fees@alsson.com",
+      to: data.customer_email, 
+      bcc: "feesemails@alsson.com",
+      subject: "Payment Receipt",
+      html
+    });
+
+    console.log("📧 Email sent");
+
+  } catch (err) {
+    console.error("Email error:", err);
+  }
+}
+
 app.all("/payfort-callback", (req, res, next) => {
   console.log("========== PAYFORT CALLBACK RECEIVED ==========");
   console.log("Method:", req.method);
@@ -190,7 +227,9 @@ function handlePayfortCallback(req, res) {
 
     const isSuccess = payload.status === "14";
     if (isSuccess){
+      console.log("=== Log Payment Action ===");
       logPaymentAction(payload)
+      sendParentEmail(payload)
     }
     const redirectUrl =
       `http://localhost:5173/checkout-result?status=${isSuccess ? "success" : "failed"}` +
@@ -240,4 +279,3 @@ app.post("/payment/verify", (req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
