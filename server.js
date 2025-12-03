@@ -137,6 +137,7 @@ async function logPaymentAction(payload) {
       .input("payment_option", sql.VarChar, payload.payment_option)
       .input("response_message", sql.VarChar, payload.response_message)
       .input("actiondate", sql.Date, new Date().toLocaleString())
+      .input("emlsnt", sql.Int, 0)
       //{new Date().toLocaleString()}
       .query(`
         INSERT INTO OnlinePayfortLog (
@@ -146,7 +147,8 @@ async function logPaymentAction(payload) {
           customer_email,
           payment_option,
           response_message,
-          actiondate
+          actiondate,
+          emlsnt
         ) VALUES (
           @fort_id,
           @merchant_reference,
@@ -154,7 +156,8 @@ async function logPaymentAction(payload) {
           @customer_email,
           @payment_option,
           @response_message,
-          @actiondate
+          @actiondate,
+          @emlsnt
         )
       `);
 
@@ -166,55 +169,55 @@ async function logPaymentAction(payload) {
 }
 
 // ---------- SEND NOTIFICATION EMAIL TO THE PARENT ----------
-async function sendParentEmail(data) {
-  try {
-      // const transporter = nodemailer.createTransport({
-      //   service: "gmail",
-      //   auth: {
-      //     host: "pop.gmail.com",
-      //     port: 587,
-      //     secure: true,          
-      //     user: 'fees@alsson.com',
-      //     pass: 'gwwowluzlabnfyqw',
-      //   },
-      // });
-      const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 587,
-        secure: false,
-        auth: {
-          user: "fees@alsson.com", 
-          pass: "gwwowluzlabnfyqw", 
-        },
-      });
+// async function sendParentEmail(data) {
+//   try {
+//       // const transporter = nodemailer.createTransport({
+//       //   service: "gmail",
+//       //   auth: {
+//       //     host: "pop.gmail.com",
+//       //     port: 587,
+//       //     secure: true,          
+//       //     user: 'fees@alsson.com',
+//       //     pass: 'gwwowluzlabnfyqw',
+//       //   },
+//       // });
+//       const transporter = nodemailer.createTransport({
+//         host: "smtp.gmail.com",
+//         port: 587,
+//         secure: false,
+//         auth: {
+//           user: "fees@alsson.com", 
+//           pass: "gwwowluzlabnfyqw", 
+//         },
+//       });
 
   
-      const html = `
-      <h2>Payment Receipt</h2>
-      <p>Dear Parent,</p>
-      <p>Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.</p>
-      <p><strong>Amounting:</strong> ${(data.amount / 100).toFixed(2)} EGP</p>
-      <p><strong>Your FORT ID:</strong> ${data.fort_id}</p>
-      <p><strong>Transaction Reference:</strong> ${data.merchant_reference}</p>
-      <p><strong>Transaction Status:</strong> ${data.response_message}</p>
-      <br/>
-      <p>Thank you for your purchase.</p>
-    `;
+//       const html = `
+//       <h2>Payment Receipt</h2>
+//       <p>Dear Parent,</p>
+//       <p>Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.</p>
+//       <p><strong>Amounting:</strong> ${(data.amount / 100).toFixed(2)} EGP</p>
+//       <p><strong>Your FORT ID:</strong> ${data.fort_id}</p>
+//       <p><strong>Transaction Reference:</strong> ${data.merchant_reference}</p>
+//       <p><strong>Transaction Status:</strong> ${data.response_message}</p>
+//       <br/>
+//       <p>Thank you for your purchase.</p>
+//     `;
 
-    await transporter.sendMail({
-      from: "fees@alsson.com",
-      to: data.customer_email, 
-      // bcc: "feesemails@alsson.com",
-      subject: "Payment Receipt",
-      html
-    });
+//     await transporter.sendMail({
+//       from: "fees@alsson.com",
+//       to: data.customer_email, 
+//       // bcc: "feesemails@alsson.com",
+//       subject: "Payment Receipt",
+//       html
+//     });
 
-    console.log("📧 Email sent");
+//     console.log("📧 Email sent");
 
-  } catch (err) {
-    console.error("Email error:", err);
-  }
-}
+//   } catch (err) {
+//     console.error("Email error:", err);
+//   }
+// }
 
 // ---------- LOG THE CALL BACK RECEIVED FROM PAYFORT ----------
 app.all("/payfort-callback", (req, res, next) => {
@@ -270,9 +273,9 @@ function handlePayfortCallback(req, res) {
     if (isSuccess){
       console.log("=== Log Payment Action ===");
       logPaymentAction(payload)
-      console.log("=== Send Notification Email ===");
-      sendParentEmail(payload)
-      console.log("=== Send Completed Successfully ===");
+      //console.log("=== Send Notification Email ===");
+      //sendParentEmail(payload)
+      //console.log("=== Send Completed Successfully ===");
     }
     const redirectUrl =
       `http://localhost:5173/checkout-result?status=${isSuccess ? "success" : "failed"}` +
@@ -297,5 +300,3 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-
