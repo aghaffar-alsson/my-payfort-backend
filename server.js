@@ -7,7 +7,7 @@ const bodyParser = require('body-parser')
 const nodemailer = require("nodemailer");
 const sql = require("mssql");
 const MERCHANT_PASS_PHRASE = "$2y$10$Ta0481EDF"
-import sgMail from "@sendgrid/mail";
+
 
 // Initiate BODY-PARSER 
 app.use(bodyParser.urlencoded({ extended: true })); // APS sends POST as form
@@ -297,3 +297,4 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
