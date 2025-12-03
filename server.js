@@ -179,7 +179,7 @@ async function sendParentEmail(data) {
       //   },
       // });
       const transporter = nodemailer.createTransport({
-        host: "smtp-relay.gmail.com",
+        host: "smtp.gmail.com",
         port: 587,
         secure: false,
         auth: {
@@ -297,4 +297,5 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
