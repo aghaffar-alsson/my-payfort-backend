@@ -1,3 +1,4 @@
+// ---------- DECLARING CONSTANTS
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
@@ -6,14 +7,16 @@ const bodyParser = require('body-parser')
 const nodemailer = require("nodemailer");
 const sql = require("mssql");
 const MERCHANT_PASS_PHRASE = "$2y$10$Ta0481EDF"
+import sgMail from "@sendgrid/mail";
 
-
+// Initiate BODY-PARSER 
 app.use(bodyParser.urlencoded({ extended: true })); // APS sends POST as form
 app.use(bodyParser.json());
 
+// Initiate EXPRESS 
 app.use(express.json());
 
-// ⭐ Correct CORS configuration
+// Initiate CORS 
 app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:5174", "https://my-payfort-api.onrender.com"],
@@ -22,9 +25,10 @@ app.use(
   })
 );
 
-// ⭐ Handle OPTIONS preflight
+//Handle OPTIONS preflight
 app.options("*", cors());
 
+//SQL SERVER CONNECTION STRING
 const sqlConfig = {
   server: "41.128.168.249",
   database: "feeswebtmp",
@@ -46,7 +50,7 @@ const sqlConfig = {
 //   },
 // });
 
-// ---------- SIGNATURE HELPERS ----------
+// ---------- CREATE SIGNATURE ----------
 function createSignature(params, requestPhrase) {
   const sorted = Object.keys(params).sort();
   const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
@@ -54,7 +58,7 @@ function createSignature(params, requestPhrase) {
   return crypto.createHash("sha256").update(toHash).digest("hex");
 }
 
-// Helper to verify signature
+// ---------- VERIFY SIGNATURE ----------
 function verifySignature(params, responsePhrase) {
   const { signature, ...data } = params;
 
@@ -71,12 +75,13 @@ function verifySignature(params, responsePhrase) {
   return hash === signature;
 }
 
-
+// ---------- ENCRYPT ORDER DETAILS ----------
 function encryptOrderDetails(text, secretKey) {
   const toHash = `${secretKey}${text}${secretKey}`;
   return crypto.createHash("sha256").update(toHash).digest("hex");
 }
 
+// ---------- GENERATE TRANSACTION REFERENCE ----------
 function generateMerchantReference(length = 16) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
@@ -86,7 +91,7 @@ function generateMerchantReference(length = 16) {
   return `TXN-${result}`;
 }
 
-// ---------- MAIN PAYFORT ENDPOINT ----------
+// ---------- CREATE TRANSACTION PAYLOAD ----------
 app.post("/createFormPayLoad", async (req, res) => {
   try {
     const orderID = generateMerchantReference(12);
@@ -119,6 +124,7 @@ app.post("/createFormPayLoad", async (req, res) => {
   }
 });
 
+// ---------- LOG PARENT ACTION ON THE DATABASE ----------
 async function logPaymentAction(payload) {
   try {
     const pool = await sql.connect(sqlConfig);
@@ -159,7 +165,7 @@ async function logPaymentAction(payload) {
   }
 }
 
-
+// ---------- SEND NOTIFICATION EMAIL TO THE PARENT ----------
 async function sendParentEmail(data) {
   try {
       // const transporter = nodemailer.createTransport({
@@ -173,14 +179,15 @@ async function sendParentEmail(data) {
       //   },
       // });
       const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 578,
-        secure: true,
+        host: "smtp-relay.gmail.com",
+        port: 587,
+        secure: false,
         auth: {
-          user: "fees@alsson.com",
-          pass: "gwwowluzlabnfyqw",
+          user: "fees@alsson.com", 
+          pass: "gwwowluzlabnfyqw", 
         },
       });
+
   
       const html = `
       <h2>Payment Receipt</h2>
@@ -209,6 +216,7 @@ async function sendParentEmail(data) {
   }
 }
 
+// ---------- LOG THE CALL BACK RECEIVED FROM PAYFORT ----------
 app.all("/payfort-callback", (req, res, next) => {
   console.log("========== PAYFORT CALLBACK RECEIVED ==========");
   console.log("Method:", req.method);
@@ -218,6 +226,27 @@ app.all("/payfort-callback", (req, res, next) => {
   next();
 });
 
+//---------Verify the payment process to detect its status
+app.post("/payment/verify", (req, res) => {
+  const encodedData = req.body.data;
+  const decoded = JSON.parse(Buffer.from(encodedData, "base64").toString("utf8"));
+
+  const expectedSignature = createSignature(decoded, MERCHANT_PASS_PHRASE);
+
+
+  if (decoded.signature !== expectedSignature) {
+    return res.json({ status: "failed" });
+  }
+
+  if (decoded.status === "14") {
+    return res.json({ status: "success" });
+  }
+
+  return res.json({ status: "failed" });
+});
+
+// ---------- HANDLE THE CALL BACK RECEIVED FROM PAYFORT 
+// TO REDIRECT IT TO OUR CheckoutResult.jsx component ----------
 function handlePayfortCallback(req, res) {
   try {
     const responsePhrase = "$2y$10$aotEpWOtP";
@@ -241,7 +270,9 @@ function handlePayfortCallback(req, res) {
     if (isSuccess){
       console.log("=== Log Payment Action ===");
       logPaymentAction(payload)
+      console.log("=== Send Notification Email ===");
       sendParentEmail(payload)
+      console.log("=== Send Completed Successfully ===");
     }
     const redirectUrl =
       `http://localhost:5173/checkout-result?status=${isSuccess ? "success" : "failed"}` +
@@ -259,36 +290,10 @@ function handlePayfortCallback(req, res) {
   }
 }
 
-
+// ---------- Call the callback handle on both cases GET & POST
 app.get("/payfort-callback", handlePayfortCallback);
 app.post("/payfort-callback", handlePayfortCallback);
-
-
-//here to verify the payment process
-app.post("/payment/verify", (req, res) => {
-  const encodedData = req.body.data;
-  const decoded = JSON.parse(Buffer.from(encodedData, "base64").toString("utf8"));
-
-  const expectedSignature = createSignature(decoded, MERCHANT_PASS_PHRASE);
-
-
-  if (decoded.signature !== expectedSignature) {
-    return res.json({ status: "failed" });
-  }
-
-  if (decoded.status === "14") {
-    return res.json({ status: "success" });
-  }
-
-  return res.json({ status: "failed" });
-});
-
-
-
-
-
 
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
