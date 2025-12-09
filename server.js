@@ -10,16 +10,6 @@ const path = require("path")
 const fs = require ("fs-extra")
 const PDFDocument = require ("pdfkit")
   
-// import express from "express";
-// import cors  from "cors";
-// import crypto from "crypto"
-// import bodyParser from 'body-parser'
-// import nodemailer from "nodemailer"
-// import sql from "mssql";
-// import dotenv from "dotenv"
-// import path from "path"
-// import fs from  "fs-extra"
-// import PDFDocument from "pdfkit";
 const PDF_PORT = process.env.PORT || 4000;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 const RECEIPTS_DIR = process.env.RECEIPTS_DIR || path.join("public", "receipts");
@@ -452,5 +442,6 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
