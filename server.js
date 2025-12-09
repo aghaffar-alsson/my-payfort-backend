@@ -2,7 +2,6 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
-const bodyParser = require('body-parser')
 const nodemailer = require("nodemailer");
 const sql = require("mssql");
 const dotenv = require("dotenv")
@@ -19,8 +18,8 @@ fs.ensureDirSync(RECEIPTS_DIR);
 const app = express();
 dotenv.config();
 // Initiate BODY-PARSER 
-app.use(bodyParser.urlencoded({ extended: true })); // APS sends POST as form
-app.use(bodyParser.json());
+app.use(express.json()); // parses JSON bodies
+app.use(express.urlencoded({ extended: true })); // parses form-data / URL encoded
 
 // Initiate EXPRESS 
 app.use(express.json());
