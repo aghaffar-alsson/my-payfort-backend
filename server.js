@@ -4,22 +4,29 @@ const cors = require("cors");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const sql = require("mssql");
-const dotenv = require("dotenv")
-const path = require("path")
-const fs = require ("fs-extra")
-const PDFDocument = require ("pdfkit")
-  
-const PDF_PORT = process.env.PORT || 4000;
-const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+const dotenv = require("dotenv");
+const path = require("path");
+const fs = require("fs-extra");
+const PDFDocument = require("pdfkit");
+
+dotenv.config();
+
+// 🔥 Ensure PORT is defined before using it
+const PORT = process.env.PORT || 5000;
+
+// Public URL defaults to Render domain if provided, else local
+const PUBLIC_URL =
+  process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+
 const RECEIPTS_DIR = process.env.RECEIPTS_DIR || path.join("public", "receipts");
 fs.ensureDirSync(RECEIPTS_DIR);
 
-
 const app = express();
-dotenv.config();
-// Initiate BODY-PARSER 
-app.use(express.json()); // parses JSON bodies
-app.use(express.urlencoded({ extended: true })); // parses form-data / URL encoded
+
+// Initialize body parsing (remove duplicate)
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 
 // Initiate EXPRESS 
 app.use(express.json());
@@ -441,6 +448,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
