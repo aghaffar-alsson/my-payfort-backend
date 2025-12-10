@@ -49,7 +49,7 @@ const sqlConfig = {
 const PDF_PORT = process.env.PORT || 4000;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PDF_PORT}`;
 const RECEIPTS_DIR = process.env.RECEIPTS_DIR || path.join("public", "receipts");
-await fs.ensureDir(RECEIPTS_DIR);
+fs.ensureDirSync(RECEIPTS_DIR);
 
 app.use("/public", express.static(path.join(process.cwd(), "public"))); // serve files
 //Configure NODEMAILER
@@ -448,3 +448,4 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
