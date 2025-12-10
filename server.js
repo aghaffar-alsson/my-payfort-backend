@@ -9,8 +9,16 @@ const dotenv = require("dotenv")
 const path = require("path")
 const fs = require ("fs-extra")
 const PDFDocument = require ("pdfkit")
-
 const app = express();
+
+const PDF_PORT = process.env.PORT || 5000;
+const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PDF_PORT}`;
+const RECEIPTS_DIR = path.join(__dirname, "public", "receipts");
+fs.ensureDirSync(RECEIPTS_DIR);
+
+// Serve static files
+app.use("/public", express.static(path.join(__dirname, "public")));
+
 dotenv.config();
 // Initiate BODY-PARSER 
 app.use(bodyParser.urlencoded({ extended: true })); // APS sends POST as form
@@ -249,11 +257,8 @@ function handlePayfortCallback(req, res) {
   }
 }
 
-//CREATE PDF FOR THE RECEIPT
-
-// Helper: create PDF and return local path + public url
+// Generate PDF receipt
 async function generateReceiptPDF(data) {
-  // data: { transactionId, amount, studentName, parentEmail, fort_id, merchant_reference, response_message, date, logoBase64? }
   const tx = data.merchant_reference || data.fort_id || Date.now();
   const fileName = `receipt_${tx}.pdf`;
   const filePath = path.join(RECEIPTS_DIR, fileName);
@@ -264,29 +269,20 @@ async function generateReceiptPDF(data) {
     const stream = fs.createWriteStream(filePath);
     doc.pipe(stream);
 
-    // Optional header with logo if data.logoPath or data.logoBase64 provided
     if (data.logoPath) {
-      try {
-        doc.image(data.logoPath, { fit: [160, 60], align: "center" });
-      } catch (e) {
-        /* ignore if image missing */
-      }
+      try { doc.image(data.logoPath, { fit: [160, 60], align: "center" }); } catch {}
     }
 
-    doc.fontSize(20).text("Payment Receipt", { align: "center" });
-    doc.moveDown(0.5);
-
+    doc.fontSize(20).text("Payment Receipt", { align: "center" }).moveDown(0.5);
     doc.fontSize(12);
-    doc.text(`Transaction ID (Fort ID): ${data.fort_id || "-"}`);
+    doc.text(`Transaction ID: ${data.fort_id || "-"}`);
     doc.text(`Order Reference: ${data.merchant_reference || "-"}`);
     doc.text(`Amount: ${data.amount} EGP`);
     doc.text(`Payment Status: ${data.status || "-"}`);
-    doc.text(`Response Message: ${data.response_message || "-"}`);
     doc.text(`Parent Email: ${data.parentEmail || "-"}`);
     doc.text(`Date: ${data.date || new Date().toLocaleString()}`);
     doc.moveDown();
 
-    // If you want a table of installments, push them here (data.items array)
     if (Array.isArray(data.items)) {
       doc.text("Items:", { underline: true });
       data.items.forEach((it) => {
@@ -295,12 +291,11 @@ async function generateReceiptPDF(data) {
       doc.moveDown();
     }
 
-    doc.text("Regards,", { continued: false });
-    doc.text("El Alsson School", { align: "left" });
-    doc.text("Finance Department", { align: "left" });
+    doc.text("Regards,");
+    doc.text("El Alsson School");
+    doc.text("Finance Department");
 
     doc.end();
-
     stream.on("finish", () => resolve({ filePath, publicUrl }));
     stream.on("error", (err) => reject(err));
   });
@@ -311,16 +306,15 @@ async function generateReceiptPDF(data) {
  * Body: JSON with receipt data (parentEmail from Payfort, amount, fort_id, merchant_reference, etc.)
  * Returns: { filePath, publicUrl }
 */
+// Endpoint to generate receipt
 app.post("/api/generate-receipt", async (req, res) => {
   try {
     const data = req.body;
-    // minimal validation
     if (!data || !data.parentEmail || !data.amount) {
       return res.status(400).json({ error: "parentEmail and amount are required" });
     }
 
-    // optional: provide path to logo image
-    const logoPath = path.join(process.cwd(), "assets", "newgiza-logo.jpg");
+    const logoPath = path.join(__dirname, "assets", "newgiza-logo.jpg");
     const pdfInfo = await generateReceiptPDF({
       ...data,
       logoPath: fs.existsSync(logoPath) ? logoPath : undefined,
@@ -334,64 +328,6 @@ app.post("/api/generate-receipt", async (req, res) => {
   }
 });
 
-/**
- * POST /api/send-receipt-email
- * Body: { schoolEmail, receiptData }
- * receiptData must include parentEmail, amount, etc.
- */
-app.post("/api/send-receipt-email", async (req, res) => {
-  try {
-    const { schoolEmail = process.env.SMTP_USER, receiptData } = req.body;
-    if (!receiptData || !receiptData.parentEmail || !receiptData.amount) {
-      return res.status(400).json({ error: "receiptData with parentEmail and amount required" });
-    }
-
-    // 1) generate PDF
-    const { filePath, publicUrl } = await generateReceiptPDF({
-      ...receiptData,
-      date: receiptData.date || new Date().toLocaleString(),
-    });
-
-    // 2) Compose email
-    // Recommended: use SMTP_USER as 'from' and set replyTo to parentEmail.
-    // If your SMTP allows arbitrary FROM, you can set from to parentEmail (less common).
-    const useParentAsFrom = false; // set to true only if your SMTP allows it
-
-    const mailOptions = {
-      from: useParentAsFrom ? `${receiptData.parentEmail}` : `"Fees System" <${process.env.SMTP_USER}>`,
-      to: schoolEmail,
-      subject: `Payment Receipt - ${receiptData.merchant_reference || receiptData.fort_id || ""}`,
-      text:
-        `Dear Fees Team,\n\nPlease find the attached payment receipt.\n\n` +
-        `Amount: ${receiptData.amount} EGP\n` +
-        `Transaction ID: ${receiptData.fort_id}\n` +
-        `Order Reference: ${receiptData.merchant_reference}\n\n` +
-        `Parent Email: ${receiptData.parentEmail}\n\nRegards,\n`,
-
-      // ensure replies go to parent
-      replyTo: receiptData.parentEmail,
-
-      attachments: [
-        {
-          filename: path.basename(filePath),
-          path: filePath,
-          contentType: "application/pdf",
-        },
-      ],
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-
-    return res.json({
-      success: true,
-      messageId: info.messageId,
-      publicUrl,
-    });
-  } catch (err) {
-    console.error("send-receipt-email error:", err);
-    return res.status(500).json({ error: "Failed to send email", details: err.message });
-  }
-});
 
 /**
  * POST /api/send-receipt-whatsapp
@@ -400,44 +336,20 @@ app.post("/api/send-receipt-email", async (req, res) => {
  *
  * NOTE: If you want to send the media directly into WhatsApp (no link), use Twilio's API
  */
-app.post("/api/send-receipt-whatsapp", async (req, res) => {
+// Endpoint to generate WhatsApp link
+app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
-    const { schoolNumber = process.env.WhatsAppNo, receiptData } = req.body;
-    if (!receiptData || !receiptData.parentEmail || !receiptData.amount) {
-      return res.status(400).json({ error: "receiptData with parentEmail and amount required" });
-    }
+    const { schoolNumber = "201003828160", publicUrl, amount, fort_id, merchant_reference, parentEmail } = req.body;
+    if (!publicUrl) return res.status(400).json({ error: "publicUrl required" });
 
-    // generate pdf
-    const { filePath, publicUrl } = await generateReceiptPDF({
-      ...receiptData,
-      date: receiptData.date || new Date().toLocaleString(),
-    });
-
-    // create a wa.me link with message + url
     const msg = encodeURIComponent(
-      `Payment Receipt Sent by Parent\n\nAmount: ${receiptData.amount} EGP\nFort ID: ${receiptData.fort_id}\nOrder Ref: ${receiptData.merchant_reference}\nParent Email: ${receiptData.parentEmail}\n\nDownload receipt: ${publicUrl}`
+      `Payment Receipt Sent by Parent\nAmount: ${amount} EGP\nFort ID: ${fort_id}\nOrder Ref: ${merchant_reference}\nParent Email: ${parentEmail}\nDownload receipt: ${publicUrl}`
     );
-
     const waLink = `https://wa.me/${schoolNumber}?text=${msg}`;
-
-    // Optionally: if you have Twilio and want server-to-server direct WhatsApp (media), implement below (commented)
-    /*
-    if (process.env.TWILIO_ACCOUNT_SID) {
-      const client = require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-      const twRes = await client.messages.create({
-        from: process.env.TWILIO_WHATSAPP_FROM, // whatsapp:+14155238886
-        to: `whatsapp:+${schoolNumber}`, // ensure leading +
-        body: `Payment Receipt from parent - ${receiptData.merchant_reference || ""}`,
-        mediaUrl: [publicUrl],
-      });
-      return res.json({ success: true, twilio: twRes });
-    }
-    */
-
-    return res.json({ success: true, waLink, publicUrl });
+    return res.json({ success: true, waLink });
   } catch (err) {
-    console.error("send-receipt-whatsapp error:", err);
-    return res.status(500).json({ error: "Failed to generate receipt for WhatsApp", details: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Failed to generate WhatsApp link", details: err.message });
   }
 });
 
@@ -448,4 +360,5 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
