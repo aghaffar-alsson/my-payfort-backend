@@ -67,7 +67,7 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASS, // app password
   },
 });
-
+console.log (transporter)
 // ---------- CREATE SIGNATURE ----------
 function createSignature(params) {
   const sorted = Object.keys(params).sort();
@@ -446,6 +446,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
