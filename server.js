@@ -350,7 +350,7 @@ app.post("/api/generate-whatsapp-link", (req, res) => {
     }
 
     const { amount, fort_id, merchant_reference, parentEmail } = receiptData;
-    const fullPublicUrl = `https://my-payfort-backend.onrender.com/receipts/receipt_${receiptPayload.merchant_reference}.pdf`;
+    const fullPublicUrl = `https://my-payfort-backend.onrender.com/receipts/receipt_${receiptData.merchant_reference}.pdf`;
     const msg = `Payment Receipt Sent by Parent
                 Amount: ${amount} EGP
                 Fort ID: ${fort_id}
@@ -361,10 +361,10 @@ app.post("/api/generate-whatsapp-link", (req, res) => {
     //const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
     const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(
       `Payment Receipt Sent by Parent
-    Amount: ${receiptPayload.amount} EGP
-    Fort ID: ${receiptPayload.fort_id}
-    Order Ref: ${receiptPayload.merchant_reference}
-    Parent Email: ${receiptPayload.parentEmail}
+    Amount: ${receiptData.amount} EGP
+    Fort ID: ${receiptData.fort_id}
+    Order Ref: ${receiptData.merchant_reference}
+    Parent Email: ${receiptData.parentEmail}
     Download receipt: ${fullPublicUrl}`
     )}`;
     return res.json({ success: true, waLink });
@@ -382,6 +382,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
