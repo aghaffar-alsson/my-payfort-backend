@@ -339,19 +339,41 @@ app.post("/api/generate-receipt", async (req, res) => {
 // Endpoint to generate WhatsApp link
 app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
-    const { schoolNumber = "201003828160", publicUrl, amount, fort_id, merchant_reference, parentEmail } = req.body;
-    if (!publicUrl) return res.status(400).json({ error: "publicUrl required" });
+    const {
+      schoolNumber = "201003828160",
+      receiptData,
+      publicUrl,
+    } = req.body;
 
-    const msg = encodeURIComponent(
-      `Payment Receipt Sent by Parent\nAmount: ${amount} EGP\nFort ID: ${fort_id}\nOrder Ref: ${merchant_reference}\nParent Email: ${parentEmail}\nDownload receipt: ${publicUrl}`
-    );
-    const waLink = `https://wa.me/${schoolNumber}?text=${msg}`;
+    if (!receiptData || !publicUrl) {
+      return res.status(400).json({ error: "receiptData and publicUrl are required" });
+    }
+
+    const { amount, fort_id, merchant_reference, parentEmail } = receiptData;
+    const fullPublicUrl = `https://my-payfort-backend.onrender.com/receipts/receipt_${receiptPayload.merchant_reference}.pdf`;
+    const msg = `Payment Receipt Sent by Parent
+                Amount: ${amount} EGP
+                Fort ID: ${fort_id}
+                Order Ref: ${merchant_reference}
+                Parent Email: ${parentEmail}
+                Download receipt: ${publicUrl}`;
+
+    //const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
+    const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(
+      `Payment Receipt Sent by Parent
+    Amount: ${receiptPayload.amount} EGP
+    Fort ID: ${receiptPayload.fort_id}
+    Order Ref: ${receiptPayload.merchant_reference}
+    Parent Email: ${receiptPayload.parentEmail}
+    Download receipt: ${fullPublicUrl}`
+    )}`;
     return res.json({ success: true, waLink });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to generate WhatsApp link", details: err.message });
   }
 });
+
 
 // ---------- Call the callback handle on both cases GET & POST
 app.get("/payfort-callback", handlePayfortCallback);
@@ -360,6 +382,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
