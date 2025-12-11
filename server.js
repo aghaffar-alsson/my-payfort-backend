@@ -356,7 +356,7 @@ app.post("/api/generate-whatsapp-link", (req, res) => {
                 Fort ID: ${fort_id}
                 Order Ref: ${merchant_reference}
                 Parent Email: ${parentEmail}
-                Download receipt: ${publicUrl}`;
+                Download receipt: ${fullPublicUrl}`;
 
     //const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
     const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(
@@ -382,6 +382,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
