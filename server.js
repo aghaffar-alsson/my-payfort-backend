@@ -18,7 +18,14 @@ fs.ensureDirSync(RECEIPTS_DIR);
 
 // Serve static files
 app.use("/public", express.static(path.join(__dirname, "public")));
-app.use("/receipts", express.static(path.join(process.cwd(), "public", "receipts")));
+//app.use("/receipts", express.static(path.join(process.cwd(), "public", "receipts")));
+
+const PUBLIC_URL="https://my-payfort-backend.onrender.com"
+const fullPublicUrl = `${PUBLIC_URL}/receipts/receipt_${receiptData.merchant_reference}.pdf`;
+
+
+// Serve receipts folder as static
+app.use("/receipts", express.static(RECEIPTS_DIR));
 
 dotenv.config();
 // Initiate BODY-PARSER 
@@ -340,40 +347,27 @@ app.post("/api/generate-receipt", async (req, res) => {
 // Endpoint to generate WhatsApp link
 app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
-    const {
-      schoolNumber = "201003828160",
-      receiptData,
-      publicUrl,
-    } = req.body;
-
-    if (!receiptData || !publicUrl) {
-      return res.status(400).json({ error: "receiptData and publicUrl are required" });
-    }
+    const { schoolNumber = "201003828160", receiptData } = req.body;
+    if (!receiptData) return res.status(400).json({ error: "receiptData required" });
 
     const { amount, fort_id, merchant_reference, parentEmail } = receiptData;
-    const fullPublicUrl = `https://my-payfort-backend.onrender.com/receipts/receipt_${receiptData.merchant_reference}.pdf`;
-    const msg = `Payment Receipt Sent by Parent
-                Amount: ${amount} EGP
-                Fort ID: ${fort_id}
-                Order Ref: ${merchant_reference}
-                Parent Email: ${parentEmail}
-                Download receipt: ${fullPublicUrl}`;
+    const fullPublicUrl = `${PUBLIC_URL}/receipts/receipt_${merchant_reference}.pdf`;
 
-    //const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
-    const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(
-      `Payment Receipt Sent by Parent
-    Amount: ${receiptData.amount} EGP
-    Fort ID: ${receiptData.fort_id}
-    Order Ref: ${receiptData.merchant_reference}
-    Parent Email: ${receiptData.parentEmail}
-    Download receipt: ${fullPublicUrl}`
-    )}`;
+    const msg = `Payment Receipt Sent by Parent
+Amount: ${amount} EGP
+Fort ID: ${fort_id}
+Order Ref: ${merchant_reference}
+Parent Email: ${parentEmail}
+Download receipt: ${fullPublicUrl}`;
+
+    const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
     return res.json({ success: true, waLink });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to generate WhatsApp link", details: err.message });
   }
 });
+
 
 
 // ---------- Call the callback handle on both cases GET & POST
@@ -383,6 +377,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
