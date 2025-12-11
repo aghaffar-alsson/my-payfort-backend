@@ -18,6 +18,7 @@ fs.ensureDirSync(RECEIPTS_DIR);
 
 // Serve static files
 app.use("/public", express.static(path.join(__dirname, "public")));
+app.use("/receipts", express.static(path.join(process.cwd(), "public", "receipts")));
 
 dotenv.config();
 // Initiate BODY-PARSER 
@@ -382,6 +383,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
