@@ -184,51 +184,65 @@ function handlePayfortCallback(req, res) {
 // app.use("/receipts", express.static(path.join(__dirname, "receipts")));
 app.use("/receipts", express.static(RECEIPTS_DIR));
 
-cloudinary.config({
+cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD,
   api_key: process.env.CLOUDINARY_KEY,
   api_secret: process.env.CLOUDINARY_SECRET,
+  secure: true
 });
 
 
 // ---------- GENERATE RECEIPT ----------
-async function generateReceiptPDF(data) {
+export async function generateReceiptAndUploadToCloudinary(data) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 40, size: "A4" });
     const chunks = [];
 
     doc.on("data", (c) => chunks.push(c));
+
     doc.on("end", async () => {
       try {
         const pdfBuffer = Buffer.concat(chunks);
-        // upload_stream returns a writable stream
+
         const uploadStream = cloudinary.uploader.upload_stream(
-          { resource_type: "raw", folder: "receipts" },
+          {
+            resource_type: "raw",
+            folder: "receipts",
+            public_id: `receipt_${data.merchant_reference || data.fort_id}`
+          },
           (err, result) => {
             if (err) return reject(err);
-            // result.secure_url is the correct URL to return to frontend
+
             resolve({
+              success: true,
               publicUrl: result.secure_url,
-              public_id: result.public_id,
-              raw_result: result,
+              cloudinaryId: result.public_id,
+              bytes: result.bytes
             });
           }
         );
+
         uploadStream.end(pdfBuffer);
-      } catch (err) {
-        reject(err);
+      } catch (error) {
+        reject(error);
       }
     });
 
-    // draw receipt content
-    if (data.logoPath) try { doc.image(data.logoPath, { fit: [160,60] }); } catch {}
+    // Build PDF
+    if (data.logoPath && fs.existsSync(data.logoPath)) {
+      try {
+        doc.image(data.logoPath, { fit: [160, 60] });
+      } catch (e) {}
+    }
+
     doc.fontSize(20).text("Payment Receipt", { align: "center" }).moveDown();
     doc.fontSize(12)
-       .text(`Transaction ID: ${data.fort_id}`)
-       .text(`Order Ref: ${data.merchant_reference}`)
-       .text(`Amount: ${data.amount} EGP`)
-       .text(`Parent Email: ${data.parentEmail}`)
-       .text(`Date: ${data.date}`);
+      .text(`Transaction ID: ${data.fort_id}`)
+      .text(`Order Ref: ${data.merchant_reference}`)
+      .text(`Amount: ${data.amount} EGP`)
+      .text(`Parent Email: ${data.parentEmail}`)
+      .text(`Date: ${data.date}`);
+
     doc.end();
   });
 }
@@ -259,43 +273,70 @@ app.post("/api/generate-receipt", async (req, res) => {
   try {
     const data = req.body;
 
-    const logoPath = path.join(__dirname, "assets", "newgiza-logo.jpg");
+    if (!data.parentEmail || !data.amount) {
+      return res.status(400).json({ error: "parentEmail and amount are required" });
+    }
 
-    const pdfInfo = await generateReceiptPDF({
-      ...data,
-      logoPath: fs.existsSync(logoPath) ? logoPath : undefined,
-      date: data.date || new Date().toLocaleString(),
+    // Logo (optional)
+    const logoPath = path.join(process.cwd(), "assets", "newgiza-logo.jpg");
+    if (fs.existsSync(logoPath)) {
+      data.logoPath = logoPath;
+    }
+
+    data.date = data.date || new Date().toLocaleString();
+
+    const uploadResult = await generateReceiptAndUploadToCloudinary(data);
+
+    return res.json({
+      success: true,
+      publicUrl: uploadResult.publicUrl,
+      cloudinaryId: uploadResult.cloudinaryId,
+      bytes: uploadResult.bytes,
+      merchant_reference: data.merchant_reference,
+      fort_id: data.fort_id
     });
-
-    return res.json({ success: true, ...pdfInfo });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to generate receipt" });
+  } catch (error) {
+    console.error("Receipt generation error:", error);
+    return res.status(500).json({
+      error: "Failed to generate receipt",
+      details: error.message
+    });
   }
 });
-
 // ---------- ENDPOINT: GENERATE WHATSAPP LINK ----------
 app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
-    const { schoolNumber = process.env.WhatsAppNo, receiptData, publicUrl } = req.body;
+    const { schoolNumber, receiptData, publicUrl } = req.body;
 
-    if (!receiptData) return res.status(400).json({ error: "receiptData required" });
-    if (!publicUrl) return res.status(400).json({ error: "publicUrl required" });
+    if (!publicUrl || !publicUrl.startsWith("http")) {
+      return res.status(400).json({ error: "Invalid or missing publicUrl" });
+    }
 
-    const msg = `Payment Receipt Sent by Parent
-Amount: ${receiptData.amount} EGP
-Fort ID: ${receiptData.fort_id}
-Order Ref: ${receiptData.merchant_reference}
-Parent Email: ${receiptData.parentEmail}
-Download receipt: ${publicUrl}`;
+    const message =
+      `Payment Receipt Sent by Parent\n` +
+      `Amount: ${receiptData.amount} EGP\n` +
+      `Fort ID: ${receiptData.fort_id}\n` +
+      `Order Ref: ${receiptData.merchant_reference}\n` +
+      `Parent Email: ${receiptData.parentEmail}\n` +
+      `Download receipt: ${publicUrl}`;
 
-    const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
-    
-    return res.json({ success: true, waLink });
+    const encoded = encodeURIComponent(message);
+
+    const whatsappUrl = `https://wa.me/${schoolNumber}?text=${encoded}`;
+
+    return res.json({
+      success: true,
+      whatsappUrl,
+      sentData: receiptData,
+      receiptUrl: publicUrl
+    });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to generate WhatsApp link" });
+    console.error("WhatsApp error:", err);
+    return res.status(500).json({
+      error: "Failed to generate WhatsApp link",
+      details: err.message
+    });
   }
 });
 
@@ -306,6 +347,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
