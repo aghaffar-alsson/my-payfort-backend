@@ -347,18 +347,18 @@ app.post("/api/generate-receipt", async (req, res) => {
 // Endpoint to generate WhatsApp link
 app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
-    const { schoolNumber = "201003828160", receiptData } = req.body;
+    const { schoolNumber = "201003928160", receiptData } = req.body;
     if (!receiptData) return res.status(400).json({ error: "receiptData required" });
 
     const { amount, fort_id, merchant_reference, parentEmail } = receiptData;
     const fullPublicUrl = `${PUBLIC_URL}/receipts/receipt_${merchant_reference}.pdf`;
 
     const msg = `Payment Receipt Sent by Parent
-Amount: ${amount} EGP
-Fort ID: ${fort_id}
-Order Ref: ${merchant_reference}
-Parent Email: ${parentEmail}
-Download receipt: ${fullPublicUrl}`;
+          Amount: ${amount} EGP
+          Fort ID: ${fort_id}
+          Order Ref: ${merchant_reference}
+          Parent Email: ${parentEmail}
+          Download receipt: ${fullPublicUrl}`;
 
     const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
     return res.json({ success: true, waLink });
@@ -377,6 +377,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
