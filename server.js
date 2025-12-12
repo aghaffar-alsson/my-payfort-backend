@@ -193,7 +193,7 @@ cloudinary.v2.config({
 
 
 // ---------- GENERATE RECEIPT ----------
-export async function generateReceiptAndUploadToCloudinary(data) {
+async function generateReceiptAndUploadToCloudinary(data) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 40, size: "A4" });
     const chunks = [];
@@ -347,6 +347,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
