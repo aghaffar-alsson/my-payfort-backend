@@ -10,6 +10,8 @@ const path = require("path");
 const fs = require("fs-extra");
 const PDFDocument = require("pdfkit");
 const { fileURLToPath } = require("url");
+const cloudinary = require("cloudinary").v2;
+
 const app = express();
 
 dotenv.config();
@@ -181,37 +183,56 @@ function handlePayfortCallback(req, res) {
 // SERVE receipts folder
 // app.use("/receipts", express.static(path.join(__dirname, "receipts")));
 app.use("/receipts", express.static(RECEIPTS_DIR));
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD,
+  api_key: process.env.CLOUDINARY_KEY,
+  api_secret: process.env.CLOUDINARY_SECRET,
+});
+
+
 // ---------- GENERATE RECEIPT ----------
 async function generateReceiptPDF(data) {
-  const tx = data.merchant_reference || data.fort_id || Date.now();
-  const fileName = `receipt_${tx}.pdf`;
-  const filePath = path.join(RECEIPTS_DIR, fileName);
-  const publicUrl = `${PUBLIC_URL}/receipts/${fileName}`;
-
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 40, size: "A4" });
-    const stream = fs.createWriteStream(filePath);
+    const chunks = [];
 
-    doc.pipe(stream);
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", async () => {
+      try {
+        const pdfBuffer = Buffer.concat(chunks);
+
+        const upload = await cloudinary.uploader.upload_stream(
+          { resource_type: "raw", folder: "receipts" },
+          (err, result) => {
+            if (err) return reject(err);
+            resolve({
+              url: result.secure_url,
+              public_id: result.public_id,
+            });
+          }
+        );
+
+        upload.end(pdfBuffer);
+      } catch (err) {
+        reject(err);
+      }
+    });
 
     if (data.logoPath) {
       try { doc.image(data.logoPath, { fit: [160, 60], align: "center" }); } catch {}
     }
 
-    doc.fontSize(20).text("Payment Receipt", { align: "center" }).moveDown(0.5);
-
+    doc.fontSize(20).text("Payment Receipt", { align: "center" });
+    doc.text("");
     doc.fontSize(12);
     doc.text(`Transaction ID: ${data.fort_id}`);
     doc.text(`Order Ref: ${data.merchant_reference}`);
     doc.text(`Amount: ${data.amount} EGP`);
-    doc.text(`Payment Status: ${data.status}`);
     doc.text(`Parent Email: ${data.parentEmail}`);
     doc.text(`Date: ${data.date}`);
 
     doc.end();
-
-    stream.on("finish", () => resolve({ fileName, filePath, publicUrl }));
-    stream.on("error", reject);
   });
 }
 
@@ -268,5 +289,6 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
