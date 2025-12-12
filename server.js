@@ -2,52 +2,36 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
-const bodyParser = require('body-parser')
+const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
 const sql = require("mssql");
-const dotenv = require("dotenv")
-const path = require("path")
-const fs = require ("fs-extra")
-const PDFDocument = require ("pdfkit")
+const dotenv = require("dotenv");
+const path = require("path");
+const fs = require("fs-extra");
+const PDFDocument = require("pdfkit");
 const app = express();
 
-const PDF_PORT = process.env.PORT || 5000;
-//const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PDF_PORT}`;
-const RECEIPTS_DIR = path.join(__dirname, "public", "receipts");
+dotenv.config();
+
+// BASE URL — DO NOT TOUCH
+const PUBLIC_URL = process.env.PUBLIC_URL || "https://my-payfort-backend.onrender.com";
+
+// RECEIPTS DIR (correct place)
+const RECEIPTS_DIR = path.join(__dirname, "receipts");
 fs.ensureDirSync(RECEIPTS_DIR);
 
-// Serve static files
-app.use("/public", express.static(path.join(__dirname, "public")));
-//app.use("/receipts", express.static(path.join(process.cwd(), "public", "receipts")));
-
-const PUBLIC_URL="https://my-payfort-backend.onrender.com"
-
-// Serve receipts folder as static
+// ---------- STATIC FILES (IMPORTANT) ----------
 app.use("/receipts", express.static(RECEIPTS_DIR));
+app.use("/public", express.static(path.join(__dirname, "public")));
 
-dotenv.config();
-// Initiate BODY-PARSER 
-app.use(bodyParser.urlencoded({ extended: true })); // APS sends POST as form
+// ---------- MIDDLEWARE ----------
+app.use(cors());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
-
-// Initiate EXPRESS 
 app.use(express.json());
 
-// Initiate CORS 
-app.use(
-  cors({
-    origin: ["http://localhost:5173", "http://localhost:5174", "https://my-payfort-api.onrender.com"],
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
 
-//Handle OPTIONS preflight
-// app.options("*", cors());
-app.options(/.*/, cors());
-
-
-//SQL SERVER CONNECTION STRING
+// ---------- SQL CONFIG ----------
 const sqlConfig = {
   server: process.env.VITE_SERVER_NAME,
   database: process.env.VITE_DB_NAME,
@@ -60,31 +44,18 @@ const sqlConfig = {
   requestTimeout: 15000,
 };
 
-// const PDF_PORT = process.env.PORT || 4000;
-// const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PDF_PORT}`;
-// const RECEIPTS_DIR = process.env.RECEIPTS_DIR || path.join("public", "receipts");
-// fs.ensureDirSync(RECEIPTS_DIR);
-
-app.use("/public", express.static(path.join(process.cwd(), "public"))); // serve files
-//Configure NODEMAILER
-// const transporter = nodemailer.createTransport({
-//   service: "gmail",
-//   auth: {
-//     user: process.env.SMTP_USER,
-//     pass: process.env.SMTP_PASS,
-//   },
-// });
+// ---------- NODEMAILER ----------
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,   // secure SSL port
+  port: process.env.SMTP_PORT,
   secure: true,
   auth: {
-    user: process.env.SMTP_USER, // example: fees@alsson.com
-    pass: process.env.SMTP_PASS, // app password
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
 });
 
-// ---------- CREATE SIGNATURE ----------
+// ---------- SIGNATURE HELPERS ----------
 function createSignature(params) {
   const sorted = Object.keys(params).sort();
   const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
@@ -92,30 +63,22 @@ function createSignature(params) {
   return crypto.createHash("sha256").update(toHash).digest("hex");
 }
 
-// ---------- VERIFY SIGNATURE ----------
 function verifySignature(params) {
   const { signature, ...data } = params;
-
   const sortedKeys = Object.keys(data).sort();
-  let baseString = process.env.AM_ResponsePhrase;
-  sortedKeys.forEach(key => {
+  let base = process.env.AM_ResponsePhrase;
+
+  sortedKeys.forEach((key) => {
     if (data[key] !== null && data[key] !== "") {
-      baseString += `${key}=${data[key]}`;
+      base += `${key}=${data[key]}`;
     }
   });
-  baseString += process.env.AM_ResponsePhrase;
 
-  const hash = crypto.createHash('sha256').update(baseString).digest('hex');
+  base += process.env.AM_ResponsePhrase;
+  const hash = crypto.createHash("sha256").update(base).digest("hex");
   return hash === signature;
 }
 
-// ---------- ENCRYPT ORDER DETAILS ----------
-function encryptOrderDetails(text, secretKey) {
-  const toHash = `${secretKey}${text}${secretKey}`;
-  return crypto.createHash("sha256").update(toHash).digest("hex");
-}
-
-// ---------- GENERATE TRANSACTION REFERENCE ----------
 function generateMerchantReference(length = 12) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
@@ -125,29 +88,24 @@ function generateMerchantReference(length = 12) {
   return `TXN-${result}`;
 }
 
-// ---------- CREATE TRANSACTION PAYLOAD ----------
+// ---------- CREATE FORM PAYLOAD ----------
 app.post("/createFormPayLoad", async (req, res) => {
   try {
-    const orderID = generateMerchantReference(12);
-    // Build Payfort payload
+    const orderID = generateMerchantReference();
     let formPayLoad = {
       command: "PURCHASE",
       language: "en",
       merchant_identifier: process.env.AM_Merchant_Identifier,
       access_code: process.env.AM_Access_Code,
       merchant_reference: orderID,
-      amount: req.body.amount * 100, // smallest currency
+      amount: req.body.amount * 100,
       currency: req.body.currency,
       customer_email: req.body.email,
-      // ⚠ Backend callback instead of frontend
-      return_url: "https://my-payfort-backend.onrender.com/payfort-callback",
-      // return_method: "POST", // important
+      return_url: `${PUBLIC_URL}/payfort-callback`,
     };
 
-    // Generate signature for Payfort request
     formPayLoad.signature = createSignature(formPayLoad);
 
-    // Send response to frontend
     res.json(formPayLoad);
   } catch (error) {
     console.error(error);
@@ -155,7 +113,7 @@ app.post("/createFormPayLoad", async (req, res) => {
   }
 });
 
-// ---------- LOG PARENT ACTION ON THE DATABASE ----------
+// ---------- LOG PAYMENT ACTION ----------
 async function logPaymentAction(payload) {
   try {
     const pool = await sql.connect(sqlConfig);
@@ -167,112 +125,70 @@ async function logPaymentAction(payload) {
       .input("customer_email", sql.VarChar, payload.customer_email)
       .input("payment_option", sql.VarChar, payload.payment_option)
       .input("response_message", sql.VarChar, payload.response_message)
-      .input("actiondate", sql.Date, new Date().toLocaleString())
+      .input("actiondate", sql.Date, new Date())
       .input("emlsnt", sql.Int, 0)
-      //{new Date().toLocaleString()}
       .query(`
         INSERT INTO OnlinePayfortLog (
-          fort_id,
-          merchant_reference,
-          amount,
-          customer_email,
-          payment_option,
-          response_message,
-          actiondate,
-          emlsnt
-        ) VALUES (
-          @fort_id,
-          @merchant_reference,
-          @amount,
-          @customer_email,
-          @payment_option,
-          @response_message,
-          @actiondate,
-          @emlsnt
+          fort_id, merchant_reference, amount, customer_email,
+          payment_option, response_message, actiondate, emlsnt
+        )
+        VALUES (
+          @fort_id, @merchant_reference, @amount, @customer_email,
+          @payment_option, @response_message, @actiondate, @emlsnt
         )
       `);
+
     console.log("Payment logged to SQL Server");
   } catch (err) {
     console.error("SQL Error:", err);
   }
 }
 
-// ---------- LOG THE CALL BACK RECEIVED FROM PAYFORT ----------
-app.all("/payfort-callback", (req, res, next) => {
-  console.log("========== PAYFORT CALLBACK RECEIVED ==========");
-  console.log("Method:", req.method);
-  console.log("Query params:", req.query);
-  console.log("Body:", req.body);
-  console.log("===============================================");
-  next();
-});
-
-//---------Verify the payment process to detect its status
-app.post("/payment/verify", (req, res) => {
-  const encodedData = req.body.data;
-  const decoded = JSON.parse(Buffer.from(encodedData, "base64").toString("utf8"));
-  const expectedSignature = createSignature(decoded);
-  if (decoded.signature !== expectedSignature) {
-    return res.json({ status: "failed" });
-  }
-  if (decoded.status === "14") {
-    return res.json({ status: "success" });
-  }
-  return res.json({ status: "failed" });
-});
-
-// ---------- HANDLE THE CALL BACK RECEIVED FROM PAYFORT 
-// TO REDIRECT IT TO OUR CheckoutResult.jsx component ----------
+// ---------- CALLBACK HANDLER ----------
 function handlePayfortCallback(req, res) {
   try {
-    //const AM_ResponsePhrase = "$2y$10$aotEpWOtP";
-
-    console.log("=== Payfort callback received ===");
     const payload = req.method === "GET" ? req.query : req.body;
-    console.log("Callback Payload:", payload);
 
-    if (!payload.signature) {
-      return res.status(400).send("Missing signature");
-    }
+    console.log("=== Payfort Callback ===", payload);
 
-    // Validate signature correctly
-    const isValid = verifySignature(payload);
-    if (!isValid) {
-      console.log("Invalid signature");
+    if (!payload.signature) return res.status(400).send("Missing signature");
+
+    if (!verifySignature(payload)) {
       return res.status(400).send("Invalid signature");
     }
 
-    const isSuccess = payload.status === "14";
-    if (isSuccess){
-      console.log("=== Log Payment Action ===");
-      logPaymentAction(payload)
-    }
+    const success = payload.status === "14";
+    if (success) logPaymentAction(payload);
+
     const redirectUrl =
-    `http://localhost:5173/checkout-result?status=${isSuccess ? "success" : "failed"}` +
-    `&amount=${payload.amount}` +
-    `&fort_id=${payload.fort_id}` +
-    `&merchant_reference=${payload.merchant_reference}` +
-    `&response_message=${encodeURIComponent(payload.response_message || "")}` +
-    `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;
+      `http://localhost:5173/checkout-result?status=${success ? "success" : "failed"}` +
+      `&amount=${payload.amount}` +
+      `&fort_id=${payload.fort_id}` +
+      `&merchant_reference=${payload.merchant_reference}` +
+      `&response_message=${encodeURIComponent(payload.response_message || "")}` +
+      `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;
 
     return res.redirect(302, redirectUrl);
-
   } catch (err) {
     console.error("Callback error:", err);
     res.status(500).send("Callback error");
   }
 }
 
-// Generate PDF receipt
+app.get("/payfort-callback", handlePayfortCallback);
+app.post("/payfort-callback", handlePayfortCallback);
+
+// ---------- GENERATE RECEIPT ----------
 async function generateReceiptPDF(data) {
   const tx = data.merchant_reference || data.fort_id || Date.now();
   const fileName = `receipt_${tx}.pdf`;
   const filePath = path.join(RECEIPTS_DIR, fileName);
-  const publicUrl = `${PUBLIC_URL}/public/receipts/${fileName}`;
+  const publicUrl = `${PUBLIC_URL}/receipts/${fileName}`;
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 40, size: "A4" });
     const stream = fs.createWriteStream(filePath);
+
     doc.pipe(stream);
 
     if (data.logoPath) {
@@ -280,47 +196,29 @@ async function generateReceiptPDF(data) {
     }
 
     doc.fontSize(20).text("Payment Receipt", { align: "center" }).moveDown(0.5);
+
     doc.fontSize(12);
-    doc.text(`Transaction ID: ${data.fort_id || "-"}`);
-    doc.text(`Order Reference: ${data.merchant_reference || "-"}`);
+    doc.text(`Transaction ID: ${data.fort_id}`);
+    doc.text(`Order Ref: ${data.merchant_reference}`);
     doc.text(`Amount: ${data.amount} EGP`);
-    doc.text(`Payment Status: ${data.status || "-"}`);
-    doc.text(`Parent Email: ${data.parentEmail || "-"}`);
-    doc.text(`Date: ${data.date || new Date().toLocaleString()}`);
-    doc.moveDown();
-
-    if (Array.isArray(data.items)) {
-      doc.text("Items:", { underline: true });
-      data.items.forEach((it) => {
-        doc.text(`${it.name} — ${it.amount} EGP`);
-      });
-      doc.moveDown();
-    }
-
-    doc.text("Regards,");
-    doc.text("El Alsson School");
-    doc.text("Finance Department");
+    doc.text(`Payment Status: ${data.status}`);
+    doc.text(`Parent Email: ${data.parentEmail}`);
+    doc.text(`Date: ${data.date}`);
 
     doc.end();
-    stream.on("finish", () => resolve({ filePath, publicUrl }));
-    stream.on("error", (err) => reject(err));
+
+    stream.on("finish", () => resolve({ fileName, filePath, publicUrl }));
+    stream.on("error", reject);
   });
 }
 
-/**
- * POST /api/generate-receipt
- * Body: JSON with receipt data (parentEmail from Payfort, amount, fort_id, merchant_reference, etc.)
- * Returns: { filePath, publicUrl }
-*/
-// Endpoint to generate receipt
+// ---------- ENDPOINT: GENERATE RECEIPT ----------
 app.post("/api/generate-receipt", async (req, res) => {
   try {
     const data = req.body;
-    if (!data || !data.parentEmail || !data.amount) {
-      return res.status(400).json({ error: "parentEmail and amount are required" });
-    }
 
     const logoPath = path.join(__dirname, "assets", "newgiza-logo.jpg");
+
     const pdfInfo = await generateReceiptPDF({
       ...data,
       logoPath: fs.existsSync(logoPath) ? logoPath : undefined,
@@ -330,61 +228,33 @@ app.post("/api/generate-receipt", async (req, res) => {
     return res.json({ success: true, ...pdfInfo });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to generate receipt", details: err.message });
+    return res.status(500).json({ error: "Failed to generate receipt" });
   }
 });
 
-
-/**
- * POST /api/send-receipt-whatsapp
- * Body: { schoolNumber, receiptData }
- * Generates the PDF and returns a wa.me link containing the public URL
- *
- * NOTE: If you want to send the media directly into WhatsApp (no link), use Twilio's API
- */
-// Endpoint to generate WhatsApp link
+// ---------- ENDPOINT: GENERATE WHATSAPP LINK ----------
 app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
-    //const fullPublicUrl = `${PUBLIC_URL}/receipts/receipt_${receiptData.merchant_reference}.pdf`;    
     const { schoolNumber = "201003928160", receiptData } = req.body;
     if (!receiptData) return res.status(400).json({ error: "receiptData required" });
 
-    const { amount, fort_id, merchant_reference, parentEmail } = receiptData;
-    const fullPublicUrl = `${PUBLIC_URL}/receipts/receipt_${merchant_reference}.pdf`;
+    const publicUrl = `${PUBLIC_URL}/receipts/receipt_${receiptData.merchant_reference}.pdf`;
 
     const msg = `Payment Receipt Sent by Parent
-          Amount: ${amount} EGP
-          Fort ID: ${fort_id}
-          Order Ref: ${merchant_reference}
-          Parent Email: ${parentEmail}
-          Download receipt: ${fullPublicUrl}`;
+Amount: ${receiptData.amount} EGP
+Fort ID: ${receiptData.fort_id}
+Order Ref: ${receiptData.merchant_reference}
+Parent Email: ${receiptData.parentEmail}
+Download receipt: ${publicUrl}`;
 
     const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
     return res.json({ success: true, waLink });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to generate WhatsApp link", details: err.message });
+    res.status(500).json({ error: "Failed to generate WhatsApp link" });
   }
 });
 
-
-
-// ---------- Call the callback handle on both cases GET & POST
-app.get("/payfort-callback", handlePayfortCallback);
-app.post("/payfort-callback", handlePayfortCallback);
-
-// Start server
+// ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-
-
-
-
-
-
-
-
-
-
-
