@@ -12,7 +12,7 @@ const PDFDocument = require ("pdfkit")
 const app = express();
 
 const PDF_PORT = process.env.PORT || 5000;
-const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PDF_PORT}`;
+//const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PDF_PORT}`;
 const RECEIPTS_DIR = path.join(__dirname, "public", "receipts");
 fs.ensureDirSync(RECEIPTS_DIR);
 
@@ -377,6 +377,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
