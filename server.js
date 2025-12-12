@@ -22,8 +22,6 @@ app.use("/public", express.static(path.join(__dirname, "public")));
 
 const PUBLIC_URL="https://my-payfort-backend.onrender.com"
 
-
-
 // Serve receipts folder as static
 app.use("/receipts", express.static(RECEIPTS_DIR));
 
@@ -378,6 +376,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
