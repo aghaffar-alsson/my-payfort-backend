@@ -247,23 +247,6 @@ async function generateReceiptAndUploadToCloudinary(data) {
   });
 }
 
-    if (data.logoPath) {
-      try { doc.image(data.logoPath, { fit: [160, 60], align: "center" }); } catch {}
-    }
-
-    doc.fontSize(20).text("Payment Receipt", { align: "center" });
-    doc.text("");
-    doc.fontSize(12);
-    doc.text(`Transaction ID: ${data.fort_id}`);
-    doc.text(`Order Ref: ${data.merchant_reference}`);
-    doc.text(`Amount: ${data.amount} EGP`);
-    doc.text(`Parent Email: ${data.parentEmail}`);
-    doc.text(`Date: ${data.date}`);
-
-    doc.end();
-  });
-}
-
 // if (!fs.existsSync(path.join(__dirname, "receipts"))) {
 //  fs.mkdirSync(path.join(__dirname, "receipts"));
 //}
@@ -347,6 +330,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
