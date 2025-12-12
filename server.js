@@ -289,39 +289,26 @@ app.post("/api/generate-receipt", async (req, res) => {
 // ---------- ENDPOINT: GENERATE WHATSAPP LINK ----------
 app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
-    const { schoolNumber, receiptData, publicUrl } = req.body;
+    const { schoolNumber = "201003928160", receiptData, publicUrl } = req.body;
+    if (!receiptData || !publicUrl) 
+      return res.status(400).json({ error: "receiptData and publicUrl required" });
 
-    if (!publicUrl || !publicUrl.startsWith("http")) {
-      return res.status(400).json({ error: "Invalid or missing publicUrl" });
-    }
+    const msg = `Payment Receipt Sent by Parent
+Amount: ${receiptData.amount} EGP
+Fort ID: ${receiptData.fort_id}
+Order Ref: ${receiptData.merchant_reference}
+Parent Email: ${receiptData.parentEmail}
+Download receipt: ${publicUrl}`;
 
-    const message =
-      `Payment Receipt Sent by Parent\n` +
-      `Amount: ${receiptData.amount} EGP\n` +
-      `Fort ID: ${receiptData.fort_id}\n` +
-      `Order Ref: ${receiptData.merchant_reference}\n` +
-      `Parent Email: ${receiptData.parentEmail}\n` +
-      `Download receipt: ${publicUrl}`;
+    const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
 
-    const encoded = encodeURIComponent(message);
-
-    const whatsappUrl = `https://wa.me/${schoolNumber}?text=${encoded}`;
-
-    return res.json({
-      success: true,
-      whatsappUrl,
-      sentData: receiptData,
-      receiptUrl: publicUrl
-    });
-
+    return res.json({ success: true, waLink });
   } catch (err) {
-    console.error("WhatsApp error:", err);
-    return res.status(500).json({
-      error: "Failed to generate WhatsApp link",
-      details: err.message
-    });
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate WhatsApp link" });
   }
 });
+
 
 
 app.get("/payfort-callback", handlePayfortCallback);
@@ -330,6 +317,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
