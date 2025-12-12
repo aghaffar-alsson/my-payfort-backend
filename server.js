@@ -9,6 +9,7 @@ const dotenv = require("dotenv");
 const path = require("path");
 const fs = require("fs-extra");
 const PDFDocument = require("pdfkit");
+const fileURLToPath  = require ("url");
 const app = express();
 
 dotenv.config();
@@ -175,14 +176,17 @@ function handlePayfortCallback(req, res) {
   }
 }
 
-app.get("/payfort-callback", handlePayfortCallback);
-app.post("/payfort-callback", handlePayfortCallback);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// SERVE receipts folder
+app.use("/receipts", express.static(path.join(__dirname, "receipts")));
 
 // ---------- GENERATE RECEIPT ----------
 async function generateReceiptPDF(data) {
   const tx = data.merchant_reference || data.fort_id || Date.now();
   const fileName = `receipt_${tx}.pdf`;
-  const filePath = path.join(RECEIPTS_DIR, fileName);
+  //const filePath = path.join(RECEIPTS_DIR, fileName);
+  const filePath = path.join(__dirname, "receipts", `receipt_${merchant_reference}.pdf`);
   const publicUrl = `${PUBLIC_URL}/receipts/${fileName}`;
 
   return new Promise((resolve, reject) => {
@@ -210,6 +214,9 @@ async function generateReceiptPDF(data) {
     stream.on("finish", () => resolve({ fileName, filePath, publicUrl }));
     stream.on("error", reject);
   });
+}
+if (!fs.existsSync(path.join(__dirname, "receipts"))) {
+  fs.mkdirSync(path.join(__dirname, "receipts"));
 }
 
 // ---------- ENDPOINT: GENERATE RECEIPT ----------
@@ -255,6 +262,10 @@ Download receipt: ${publicUrl}`;
   }
 });
 
+app.get("/payfort-callback", handlePayfortCallback);
+app.post("/payfort-callback", handlePayfortCallback);
+
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
