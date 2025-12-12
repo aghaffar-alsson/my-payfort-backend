@@ -263,10 +263,10 @@ app.post("/api/generate-receipt", async (req, res) => {
 // ---------- ENDPOINT: GENERATE WHATSAPP LINK ----------
 app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
-    const { schoolNumber = "201003928160", receiptData } = req.body;
-    if (!receiptData) return res.status(400).json({ error: "receiptData required" });
+    const { schoolNumber = process.env.WhatsAppNo, receiptData, publicUrl } = req.body;
 
-    const publicUrl = `${PUBLIC_URL}/receipts/receipt_${receiptData.merchant_reference}.pdf`;
+    if (!receiptData) return res.status(400).json({ error: "receiptData required" });
+    if (!publicUrl) return res.status(400).json({ error: "publicUrl required" });
 
     const msg = `Payment Receipt Sent by Parent
 Amount: ${receiptData.amount} EGP
@@ -276,12 +276,15 @@ Parent Email: ${receiptData.parentEmail}
 Download receipt: ${publicUrl}`;
 
     const waLink = `https://wa.me/${schoolNumber}?text=${encodeURIComponent(msg)}`;
+    
     return res.json({ success: true, waLink });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to generate WhatsApp link" });
   }
 });
+
 
 app.get("/payfort-callback", handlePayfortCallback);
 app.post("/payfort-callback", handlePayfortCallback);
@@ -289,6 +292,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
