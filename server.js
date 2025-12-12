@@ -21,7 +21,7 @@ app.use("/public", express.static(path.join(__dirname, "public")));
 //app.use("/receipts", express.static(path.join(process.cwd(), "public", "receipts")));
 
 const PUBLIC_URL="https://my-payfort-backend.onrender.com"
-const fullPublicUrl = `${PUBLIC_URL}/receipts/receipt_${receiptData.merchant_reference}.pdf`;
+
 
 
 // Serve receipts folder as static
@@ -347,6 +347,7 @@ app.post("/api/generate-receipt", async (req, res) => {
 // Endpoint to generate WhatsApp link
 app.post("/api/generate-whatsapp-link", (req, res) => {
   try {
+    //const fullPublicUrl = `${PUBLIC_URL}/receipts/receipt_${receiptData.merchant_reference}.pdf`;    
     const { schoolNumber = "201003928160", receiptData } = req.body;
     if (!receiptData) return res.status(400).json({ error: "receiptData required" });
 
@@ -377,6 +378,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
