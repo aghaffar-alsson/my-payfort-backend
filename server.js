@@ -184,7 +184,7 @@ function handlePayfortCallback(req, res) {
 // app.use("/receipts", express.static(path.join(__dirname, "receipts")));
 app.use("/receipts", express.static(RECEIPTS_DIR));
 
-cloudinary.v2.config({
+cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD,
   api_key: process.env.CLOUDINARY_KEY,
   api_secret: process.env.CLOUDINARY_SECRET,
@@ -330,6 +330,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
