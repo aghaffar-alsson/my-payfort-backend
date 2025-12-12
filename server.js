@@ -236,9 +236,9 @@ async function generateReceiptPDF(data) {
   });
 }
 
-if (!fs.existsSync(path.join(__dirname, "receipts"))) {
-  fs.mkdirSync(path.join(__dirname, "receipts"));
-}
+// if (!fs.existsSync(path.join(__dirname, "receipts"))) {
+//  fs.mkdirSync(path.join(__dirname, "receipts"));
+//}
 
 // ---------- ENDPOINT: GENERATE RECEIPT ----------
 app.post("/api/generate-receipt", async (req, res) => {
@@ -289,6 +289,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
