@@ -197,27 +197,41 @@ async function generateReceiptPDF(data) {
     const doc = new PDFDocument({ margin: 40, size: "A4" });
     const chunks = [];
 
-    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("data", (c) => chunks.push(c));
     doc.on("end", async () => {
       try {
         const pdfBuffer = Buffer.concat(chunks);
-
-        const upload = await cloudinary.uploader.upload_stream(
+        // upload_stream returns a writable stream
+        const uploadStream = cloudinary.uploader.upload_stream(
           { resource_type: "raw", folder: "receipts" },
           (err, result) => {
             if (err) return reject(err);
+            // result.secure_url is the correct URL to return to frontend
             resolve({
-              url: result.secure_url,
+              publicUrl: result.secure_url,
               public_id: result.public_id,
+              raw_result: result,
             });
           }
         );
-
-        upload.end(pdfBuffer);
+        uploadStream.end(pdfBuffer);
       } catch (err) {
         reject(err);
       }
     });
+
+    // draw receipt content
+    if (data.logoPath) try { doc.image(data.logoPath, { fit: [160,60] }); } catch {}
+    doc.fontSize(20).text("Payment Receipt", { align: "center" }).moveDown();
+    doc.fontSize(12)
+       .text(`Transaction ID: ${data.fort_id}`)
+       .text(`Order Ref: ${data.merchant_reference}`)
+       .text(`Amount: ${data.amount} EGP`)
+       .text(`Parent Email: ${data.parentEmail}`)
+       .text(`Date: ${data.date}`);
+    doc.end();
+  });
+}
 
     if (data.logoPath) {
       try { doc.image(data.logoPath, { fit: [160, 60], align: "center" }); } catch {}
@@ -292,6 +306,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
