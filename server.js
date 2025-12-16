@@ -126,13 +126,13 @@ function generateMerchantReference(length = 12) {
 app.post("/createFormPayLoad", async (req, res) => {
   try {
     const { amount, currency, email, schoolId } = req.body;    
-    schoolId = Number(schoolId);
-    if (![1, 2].includes(schoolId)) {
+    const schoolCode = Number(schoolId);
+    if (![1, 2].includes(schoolCode)) {
       return res.status(400).json({ error: "Invalid schoolId" });
     }    
     const orderID = generateMerchantReference();
     // Resolve credentials dynamically
-    const { merchant_identifier, access_code } = getMerchantCredentials(schoolId);    
+    const { merchant_identifier, access_code } = getMerchantCredentials(schoolCode);    
     let formPayLoad = {
       command: "PURCHASE",
       language: "en",
@@ -145,8 +145,22 @@ app.post("/createFormPayLoad", async (req, res) => {
       return_url: `${PUBLIC_URL}/payfort-callback`,
     };
 
-    formPayLoad.signature = createSignature(formPayLoad, schoolId);
-
+    formPayLoad.signature = createSignature(formPayLoad, schoolCode);
+    //here insert a record to keeptrack the merchant reference and the school id
+    const pool = await sql.connect(sqlConfig);    
+    await pool.request()
+      .input("merchant_reference", sql.VarChar(50), orderID)
+      .input("school_id", sql.Int, schoolCode)
+      .input("amount", sql.Int, req.body.amount * 100)
+      .input("currency", sql.Char(3), req.body.currency)
+      .input("customer_email", sql.NVarChar(255), req.body.email)
+      .query(`
+        INSERT INTO PayfortTransactions
+        (merchant_reference, school_id, amount, currency, customer_email, status)
+        VALUES
+        (@merchant_reference, @school_id, @amount, @currency, @customer_email, 'PENDING')
+      `);
+    //end of keep tracking
     res.json(formPayLoad);
   } catch (error) {
     console.error(error);
@@ -193,14 +207,44 @@ function handlePayfortCallback(req, res) {
     console.log("=== Payfort Callback ===", payload);
 
     if (!payload.signature) return res.status(400).send("Missing signature");
-
-    if (!verifySignature(payload)) {
+    
+    //here get the school id from the keep tracking table using the merchant reference
+    const pool = await sql.connect(sqlConfig);        
+    const result = await pool.request()
+      .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+      .query(`
+        SELECT school_id
+        FROM PayfortTransactions
+        WHERE merchant_reference = @merchant_reference
+      `);
+    
+    if (result.recordset.length === 0) {
+      throw new Error("Unknown merchant_reference");
+    }
+    
+    const schoolId = result.recordset[0].school_id;    
+    //end of getting the school id
+    if (!verifySignature(payload, schoolId )) {
       return res.status(400).send("Invalid signature");
     }
 
     const success = payload.status === "14";
-    if (success) logPaymentAction(payload);
-
+    if (success) {
+      logPaymentAction(payload);
+      await pool.request()
+      .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+      .input("status", sql.VarChar(20), success ? "SUCCESS" : "FAILED")
+      .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+      .query(`
+      UPDATE PayfortTransactions
+      SET
+      status = @status,
+      fort_id = @fort_id,
+      updated_at = SYSDATETIME()
+      WHERE merchant_reference = @merchant_reference
+      `);
+      
+    }
     const redirectUrl =
       `http://localhost:5173/checkout-result?status=${success ? "success" : "failed"}` +
       `&amount=${payload.amount}` +
@@ -355,6 +399,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
