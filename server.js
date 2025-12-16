@@ -200,16 +200,19 @@ async function logPaymentAction(payload) {
 }
 
 // ---------- CALLBACK HANDLER ----------
-function handlePayfortCallback(req, res) {
+async function handlePayfortCallback(req, res) {
   try {
     const payload = req.method === "GET" ? req.query : req.body;
 
     console.log("=== Payfort Callback ===", payload);
 
-    if (!payload.signature) return res.status(400).send("Missing signature");
-    
-    //here get the school id from the keep tracking table using the merchant reference
-    const pool = await sql.connect(sqlConfig);        
+    if (!payload.signature) {
+      return res.status(400).send("Missing signature");
+    }
+
+    // DB lookup
+    const pool = await sql.connect(sqlConfig);
+
     const result = await pool.request()
       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
       .query(`
@@ -217,34 +220,37 @@ function handlePayfortCallback(req, res) {
         FROM PayfortTransactions
         WHERE merchant_reference = @merchant_reference
       `);
-    
+
     if (result.recordset.length === 0) {
-      throw new Error("Unknown merchant_reference");
+      return res.status(400).send("Unknown merchant_reference");
     }
-    
-    const schoolId = result.recordset[0].school_id;    
-    //end of getting the school id
-    if (!verifySignature(payload, schoolId )) {
+
+    const schoolId = result.recordset[0].school_id;
+
+    // Verify signature with correct response phrase
+    if (!verifySignature(payload, schoolId)) {
       return res.status(400).send("Invalid signature");
     }
 
     const success = payload.status === "14";
+
     if (success) {
       logPaymentAction(payload);
+
       await pool.request()
-      .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
-      .input("status", sql.VarChar(20), success ? "SUCCESS" : "FAILED")
-      .input("fort_id", sql.VarChar(50), payload.fort_id || null)
-      .query(`
-      UPDATE PayfortTransactions
-      SET
-      status = @status,
-      fort_id = @fort_id,
-      updated_at = SYSDATETIME()
-      WHERE merchant_reference = @merchant_reference
-      `);
-      
+        .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+        .input("status", sql.VarChar(20), "SUCCESS")
+        .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+        .query(`
+          UPDATE PayfortTransactions
+          SET
+            status = @status,
+            fort_id = @fort_id,
+            updated_at = SYSDATETIME()
+          WHERE merchant_reference = @merchant_reference
+        `);
     }
+
     const redirectUrl =
       `http://localhost:5173/checkout-result?status=${success ? "success" : "failed"}` +
       `&amount=${payload.amount}` +
@@ -254,11 +260,13 @@ function handlePayfortCallback(req, res) {
       `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;
 
     return res.redirect(302, redirectUrl);
+
   } catch (err) {
     console.error("Callback error:", err);
-    res.status(500).send("Callback error");
+    return res.status(500).send("Callback error");
   }
 }
+
 
 // const __filename = fileURLToPath(import.meta.url);
 // const __dirname = path.dirname(__filename);
@@ -399,6 +407,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
