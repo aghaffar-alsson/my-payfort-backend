@@ -60,7 +60,7 @@ const transporter = nodemailer.createTransport({
 //**********SWITCH PAYFORT CREDENTIALS ACCORDING TO THE SCHOOL ID*******
 function getMerchantCredentials(schoolId) {
   switch (schoolId) {
-    case "1":
+    case 1:
       return {
         merchant_identifier: process.env.AM_Merchant_Identifier,
         access_code: process.env.AM_Access_Code,
@@ -68,7 +68,7 @@ function getMerchantCredentials(schoolId) {
         response_phrase: process.env.AM_ResponsePhrase,
       };
 
-    case "2":
+    case 2:
       return {
         merchant_identifier: process.env.BR_Merchant_Identifier,
         access_code: process.env.BR_Access_Code,
@@ -126,6 +126,10 @@ function generateMerchantReference(length = 12) {
 app.post("/createFormPayLoad", async (req, res) => {
   try {
     const { amount, currency, email, schoolId } = req.body;    
+    schoolId = Number(schoolId);
+    if (![1, 2].includes(schoolId)) {
+      return res.status(400).json({ error: "Invalid schoolId" });
+    }    
     const orderID = generateMerchantReference();
     // Resolve credentials dynamically
     const { merchant_identifier, access_code } = getMerchantCredentials(schoolId);    
@@ -351,6 +355,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
