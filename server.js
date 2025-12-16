@@ -57,19 +57,50 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASS,
   },
 });
+//**********SWITCH PAYFORT CREDENTIALS ACCORDING TO THE SCHOOL ID*******
+function getMerchantCredentials(schoolId) {
+  switch (schoolId) {
+    case 1:
+      return {
+        merchant_identifier: process.env.AM_Merchant_Identifier,
+        access_code: process.env.AM_Access_Code,
+        request_phrase: process.env.AM_RequestPhrase,
+        response_phrase: process.env.AM_ResponsePhrase,
+      };
+
+    case 2:
+      return {
+        merchant_identifier: process.env.BR_Merchant_Identifier,
+        access_code: process.env.BR_Access_Code,
+        request_phrase: process.env.BR_RequestPhrase,
+        response_phrase: process.env.BR_ResponsePhrase,
+      };
+
+    default:
+      throw new Error("Invalid schoolId");
+  }
+}
+
 
 // ---------- SIGNATURE HELPERS ----------
-function createSignature(params) {
+function createSignature(params, schoolId) {
+  // Resolve credentials dynamically
+  const { request_phrase } = getMerchantCredentials(schoolId);  
   const sorted = Object.keys(params).sort();
   const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
-  const toHash = `${process.env.AM_RequestPhrase}${concatenated}${process.env.AM_RequestPhrase}`;
+  //const toHash = `${process.env.AM_RequestPhrase}${concatenated}${process.env.AM_RequestPhrase}`;
+  const toHash = `${request_phrase}${concatenated}${request_phrase}`;
+  
   return crypto.createHash("sha256").update(toHash).digest("hex");
 }
 
-function verifySignature(params) {
+function verifySignature(params, schoolId) {
+  // Resolve credentials dynamically
+  const { response_phrase } = getMerchantCredentials(schoolId);  
+  
   const { signature, ...data } = params;
   const sortedKeys = Object.keys(data).sort();
-  let base = process.env.AM_ResponsePhrase;
+  let base = response_phrase;
 
   sortedKeys.forEach((key) => {
     if (data[key] !== null && data[key] !== "") {
@@ -77,7 +108,7 @@ function verifySignature(params) {
     }
   });
 
-  base += process.env.AM_ResponsePhrase;
+  base += response_phrase;
   const hash = crypto.createHash("sha256").update(base).digest("hex");
   return hash === signature;
 }
@@ -94,12 +125,15 @@ function generateMerchantReference(length = 12) {
 // ---------- CREATE FORM PAYLOAD ----------
 app.post("/createFormPayLoad", async (req, res) => {
   try {
+    const { amount, currency, email, schoolId } = req.body;    
     const orderID = generateMerchantReference();
+    // Resolve credentials dynamically
+    const { merchant_identifier, access_code } = getMerchantCredentials(schoolId);    
     let formPayLoad = {
       command: "PURCHASE",
       language: "en",
-      merchant_identifier: process.env.AM_Merchant_Identifier,
-      access_code: process.env.AM_Access_Code,
+      merchant_identifier: merchant_identifier,
+      access_code: access_code,
       merchant_reference: orderID,
       amount: req.body.amount * 100,
       currency: req.body.currency,
@@ -107,7 +141,7 @@ app.post("/createFormPayLoad", async (req, res) => {
       return_url: `${PUBLIC_URL}/payfort-callback`,
     };
 
-    formPayLoad.signature = createSignature(formPayLoad);
+    formPayLoad.signature = createSignature(formPayLoad, schoolId);
 
     res.json(formPayLoad);
   } catch (error) {
@@ -317,6 +351,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
