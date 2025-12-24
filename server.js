@@ -170,7 +170,7 @@ app.post("/createFormPayLoad", async (req, res) => {
         INSERT INTO PayfortTempPaymentItems
         (merchant_reference, paymentItems,created_at)
         VALUES
-        (@merchant_reference, @items_json, @created_at)
+        (@merchant_reference, @paymentItems, @created_at)
       `);      
     //end of keep tracking
     res.json(formPayLoad);
@@ -268,7 +268,7 @@ async function handlePayfortCallback(req, res) {
   const itemsResult = await pool.request()
     .input("merchant_reference", sql.VarChar(50), merchant_reference)
     .query(`
-      SELECT paymentItems AS items_json
+      SELECT paymentItems 
       FROM PayfortTempPaymentItems
       WHERE merchant_reference=@merchant_reference
     `);
@@ -277,7 +277,7 @@ async function handlePayfortCallback(req, res) {
     throw new Error("Payment items not found");
   }
 
-  const paymentItems = JSON.parse(itemsResult.recordset[0].items_json);
+  const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
 
   for (const item of paymentItems) {
     await keepTrackPaymentAction(item, merchant_reference, fortId);
@@ -529,3 +529,4 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
