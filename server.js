@@ -262,15 +262,15 @@ async function handlePayfortCallback(req, res) {
           WHERE merchant_reference = @merchant_reference
         `);
 
-  const merchant_reference = payload.merchant_reference;
-  const fortId = payload.fort_id;
+  const merchant_reff = payload.merchant_reference;
+  const fortIDD = payload.fort_id;
 
   const itemsResult = await pool.request()
-    .input("merchant_reference", sql.VarChar(50), merchant_reference)
+    .input("merchant_reff", sql.VarChar(50), merchant_reff)
     .query(`
       SELECT paymentItems 
       FROM PayfortTempPaymentItems
-      WHERE merchant_reference=@merchant_reference
+      WHERE merchant_reference=@merchant_reff
     `);
 
   if (!itemsResult.recordset.length) {
@@ -280,7 +280,7 @@ async function handlePayfortCallback(req, res) {
   const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
 
   for (const item of paymentItems) {
-    await keepTrackPaymentAction(item, merchant_reference, fortId);
+    await keepTrackPaymentAction(item, merchant_reff, fortIDD);
   }
 
   // 🧹 cleanup
@@ -441,7 +441,7 @@ Download receipt: ${publicUrl}`;
 });
 
 // ---------- LOG PAYMENT ACTION ----------
-async function keepTrackPaymentAction(paymentItem, merchant_reference, fort_id) {
+async function keepTrackPaymentAction(paymentItem, merchant_reff, fort_iDD) {
   const pool = await sql.connect(sqlConfig);
   const transaction = new sql.Transaction(pool);
 
@@ -456,7 +456,8 @@ async function keepTrackPaymentAction(paymentItem, merchant_reference, fort_id) 
       .input("SCHOOLID", sql.Int, paymentItem.schoolId)
       .input("INSTCODE", sql.Int, paymentItem.instCode)
       .input("FACENAME", sql.VarChar, paymentItem.facename)
-      .input("MERCHANT_REFERENCE", sql.VarChar, merchant_reference)
+      .input("MERCHANT_REFF", sql.VarChar, merchant_reff)
+      .input("FORT_IDD", sql.VarChar, fort_iDD)
       .query(`
         DELETE FROM APSTRANS
         WHERE CURYEAR=@CURYEAR
@@ -466,15 +467,16 @@ async function keepTrackPaymentAction(paymentItem, merchant_reference, fort_id) 
           AND InstCode=@INSTCODE
           AND FACENAME=@FACENAME
           AND SETTLED=0
-          AND merchant_reference=@MERCHANT_REFERENCE
+          AND merchant_reference=@MERCHANT_REFF
+          AND FORT_ID=@FORT_IDD
       `);
 
     // INSERT confirmed payment
     await request
       .input("PAIDAMOUNT", sql.Numeric(18,2), paymentItem.amount)
       .input("TRNSDT", sql.Date, new Date())
-      .input("MERCHANT_REFERENCE", sql.VarChar, merchant_reference)
-      .input("FORT_ID", sql.VarChar, fort_id)
+      .input("MERCHANT_REFF", sql.VarChar, merchant_reff)
+      .input("FORT_IDD", sql.VarChar, fort_iDD)
       .query(`
         INSERT INTO APSTRANS
           (
@@ -487,8 +489,8 @@ async function keepTrackPaymentAction(paymentItem, merchant_reference, fort_id) 
           (
             @CURYEAR, @S_CODE, @FAMID, @SCHOOLID,
             @INSTCODE, @FACENAME,
-            @PAIDAMOUNT, @TRNSDT, 1,
-            @MERCHANT_REFERENCE, @FORT_ID
+            @PAIDAMOUNT, @TRNSDT, 0,
+            @MERCHANT_REFF, @FORT_IDD
           )
       `);
 
