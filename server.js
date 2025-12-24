@@ -266,11 +266,11 @@ async function handlePayfortCallback(req, res) {
   const fortIDD = payload.fort_id;
 
   const itemsResult = await pool.request()
-    .input("merchant_reff", sql.VarChar(50), merchant_reff)
+    .input("merchantreff", sql.VarChar(50), merchant_reff)
     .query(`
       SELECT paymentItems 
       FROM PayfortTempPaymentItems
-      WHERE merchant_reference=@merchant_reff
+      WHERE merchant_reference=@merchantreff
     `);
 
   if (!itemsResult.recordset.length) {
@@ -456,7 +456,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
       .input("SCHOOLID", sql.Int, paymentItem.schoolId)
       .input("INSTCODE", sql.Int, paymentItem.instCode)
       .input("FACENAME", sql.VarChar, paymentItem.facename)
-      .input("MERCHANT_REFF", sql.VarChar, merchant_reff)
+      .input("MERCHANTREFF_1", sql.VarChar, merchant_reff)
       .input("FORT_IDD", sql.VarChar, fortIDD)
       .query(`
         DELETE FROM APSTRANS
@@ -467,7 +467,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
           AND InstCode=@INSTCODE
           AND FACENAME=@FACENAME
           AND SETTLED=0
-          AND merchant_reference=@MERCHANT_REFF
+          AND merchant_reference=@MERCHANTREFF_1
           AND FORT_ID=@FORT_IDD
       `);
 
