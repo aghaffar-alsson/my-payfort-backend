@@ -457,7 +457,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
       .input("INSTCODE", sql.Int, paymentItem.instCode)
       .input("FACENAME", sql.VarChar, paymentItem.facename)
       .input("MERCHANTREFF_1", sql.VarChar, merchant_reff)
-      .input("FORT_IDD", sql.VarChar, fortIDD)
+      .input("FORT_IDD_1", sql.VarChar, fortIDD)
       .query(`
         DELETE FROM APSTRANS
         WHERE CURYEAR=@CURYEAR
@@ -468,7 +468,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
           AND FACENAME=@FACENAME
           AND SETTLED=0
           AND merchant_reference=@MERCHANTREFF_1
-          AND FORT_ID=@FORT_IDD
+          AND FORT_ID=@FORT_IDD_1
       `);
 
     // INSERT confirmed payment
