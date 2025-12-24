@@ -262,26 +262,27 @@ async function handlePayfortCallback(req, res) {
           WHERE merchant_reference = @merchant_reference
         `);
 
-  const merchant_reff = payload.merchant_reference;
-  const fortIDD = payload.fort_id;
+        const merchant_reff = payload.merchant_reference;
+        const fortIDD = payload.fort_id;
 
-  const itemsResult = await pool.request()
-    .input("merchantreff", sql.VarChar(50), merchant_reff)
-    .query(`
-      SELECT paymentItems 
-      FROM PayfortTempPaymentItems
-      WHERE merchant_reference=@merchantreff
-    `);
+        const itemsResult = await pool.request()
+            .input("merchantreff", sql.VarChar(50), merchant_reff)
+            .query(`
+            SELECT paymentItems 
+            FROM PayfortTempPaymentItems
+            WHERE merchant_reference=@merchantreff
+            `);
 
-  if (!itemsResult.recordset.length) {
-    throw new Error("Payment items not found");
-  }
+        if (!itemsResult.recordset.length) {
+            throw new Error("Payment items not found");
+        }
 
-  const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
-
-  for (const item of paymentItems) {
-    await keepTrackPaymentAction(item, merchant_reff, fortIDD);
-  }
+        const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
+        console.log("Payment Items to log:", paymentItems);
+                
+        for (const item of paymentItems) {
+            await keepTrackPaymentAction(item, merchant_reff, fortIDD);
+        }
 
   // 🧹 cleanup
   // await pool.request()
