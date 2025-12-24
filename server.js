@@ -125,7 +125,7 @@ function generateMerchantReference(length = 12) {
 // ---------- CREATE FORM PAYLOAD ----------
 app.post("/createFormPayLoad", async (req, res) => {
   try {
-    const { amount, currency, email, schoolId } = req.body;    
+    const { amount, currency, email, schoolId,  paymentItems = [] } = req.body;    
     const schoolCode = Number(schoolId);
     if (![1, 2].includes(schoolCode)) {
       return res.status(400).json({ error: "Invalid schoolId" });
@@ -160,6 +160,18 @@ app.post("/createFormPayLoad", async (req, res) => {
         VALUES
         (@merchant_reference, @school_id, @amount, @currency, @customer_email, 'PENDING')
       `);
+
+    //Save detailed items as JSON ON TEMPORARY TABLE
+    await pool.request()
+      .input("merchant_reference", sql.VarChar(50), orderID)
+      .input("paymentItems", sql.NVarChar(sql.MAX), JSON.stringify(paymentItems))
+      .input("created_at", sql.Date, new Date())      
+      .query(`
+        INSERT INTO PayfortTempPaymentItems
+        (merchant_reference, paymentItems,created_at)
+        VALUES
+        (@merchant_reference, @items_json, @created_at)
+      `);      
     //end of keep tracking
     res.json(formPayLoad);
   } catch (error) {
@@ -249,7 +261,36 @@ async function handlePayfortCallback(req, res) {
             updated_at = SYSDATETIME()
           WHERE merchant_reference = @merchant_reference
         `);
-    }
+
+  const merchant_reference = payload.merchant_reference;
+  const fortId = payload.fort_id;
+
+  const itemsResult = await pool.request()
+    .input("merchant_reference", sql.VarChar(50), merchant_reference)
+    .query(`
+      SELECT paymentItems AS items_json
+      FROM PayfortTempPaymentItems
+      WHERE merchant_reference=@merchant_reference
+    `);
+
+  if (!itemsResult.recordset.length) {
+    throw new Error("Payment items not found");
+  }
+
+  const paymentItems = JSON.parse(itemsResult.recordset[0].items_json);
+
+  for (const item of paymentItems) {
+    await keepTrackPaymentAction(item, merchant_reference, fortId);
+  }
+
+  // 🧹 cleanup
+  // await pool.request()
+  //   .input("merchant_reference", sql.VarChar(50), merchant_reference)
+  //   .query(`
+  //     DELETE FROM PayfortTempPaymentItems
+  //     WHERE merchant_reference=@merchant_reference
+  //   `);
+}    
 
     const redirectUrl =
       `http://localhost:5173/checkout-result?status=${success ? "success" : "failed"}` +
@@ -399,7 +440,88 @@ Download receipt: ${publicUrl}`;
   }
 });
 
+// ---------- LOG PAYMENT ACTION ----------
+async function keepTrackPaymentAction(paymentItem, merchant_reference, fort_id) {
+  const pool = await sql.connect(sqlConfig);
+  const transaction = new sql.Transaction(pool);
 
+  try {
+    await transaction.begin();
+    const request = new sql.Request(transaction);
+    // DELETE pending record for same item
+    await request
+      .input("CURYEAR", sql.VarChar, paymentItem.curyear)
+      .input("S_CODE", sql.VarChar, paymentItem.stid)
+      .input("FAMID", sql.Int, paymentItem.famid)
+      .input("SCHOOLID", sql.Int, paymentItem.schoolId)
+      .input("INSTCODE", sql.Int, paymentItem.instCode)
+      .input("FACENAME", sql.VarChar, paymentItem.facename)
+      .input("MERCHANT_REFERENCE", sql.VarChar, merchant_reference)
+      .query(`
+        DELETE FROM APSTRANS
+        WHERE CURYEAR=@CURYEAR
+          AND S_CODE=@S_CODE
+          AND FAMID=@FAMID
+          AND SCHOOLID=@SCHOOLID
+          AND InstCode=@INSTCODE
+          AND FACENAME=@FACENAME
+          AND SETTLED=0
+          AND merchant_reference=@MERCHANT_REFERENCE
+      `);
+
+    // INSERT confirmed payment
+    await request
+      .input("PAIDAMOUNT", sql.Numeric(18,2), paymentItem.amount)
+      .input("TRNSDT", sql.Date, new Date())
+      .input("MERCHANT_REFERENCE", sql.VarChar, merchant_reference)
+      .input("FORT_ID", sql.VarChar, fort_id)
+      .query(`
+        INSERT INTO APSTRANS
+          (
+            CURYEAR, S_CODE, FAMID, SCHOOLID,
+            InstCode, FACENAME,
+            PAIDAMOUNT, TRNSDT, SETTLED,
+            merchant_reference, fort_id
+          )
+        VALUES
+          (
+            @CURYEAR, @S_CODE, @FAMID, @SCHOOLID,
+            @INSTCODE, @FACENAME,
+            @PAIDAMOUNT, @TRNSDT, 1,
+            @MERCHANT_REFERENCE, @FORT_ID
+          )
+      `);
+
+    await transaction.commit();
+    console.log("Payment item settled:", paymentItem.facename);
+  } catch (err) {
+    await transaction.rollback();
+    console.error("SQL Error:", err);
+    throw err;
+  }
+}
+
+//API ENDPOINT TO LOG PAYMENT ITEMS
+app.post("/api/log-payment", async (req, res) => {
+  const { paymentItems } = req.body;
+
+  console.log("Incoming items:", paymentItems);
+
+  if (!Array.isArray(paymentItems) || !paymentItems.length) {
+    return res.status(400).json({ message: "paymentItems array is required" });
+  }
+
+  try {
+    for (const item of paymentItems) {
+      await keepTrackPaymentAction(item);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+// ---------- ENDPOINT: LOG PAYMENT ITEMS ----------
 
 app.get("/payfort-callback", handlePayfortCallback);
 app.post("/payfort-callback", handlePayfortCallback);
@@ -407,19 +529,3 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
