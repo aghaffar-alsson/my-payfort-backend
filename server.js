@@ -441,7 +441,7 @@ Download receipt: ${publicUrl}`;
 });
 
 // ---------- LOG PAYMENT ACTION ----------
-async function keepTrackPaymentAction(paymentItem, merchant_reff, fort_iDD) {
+async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
   const pool = await sql.connect(sqlConfig);
   const transaction = new sql.Transaction(pool);
 
@@ -457,7 +457,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fort_iDD) {
       .input("INSTCODE", sql.Int, paymentItem.instCode)
       .input("FACENAME", sql.VarChar, paymentItem.facename)
       .input("MERCHANT_REFF", sql.VarChar, merchant_reff)
-      .input("FORT_IDD", sql.VarChar, fort_iDD)
+      .input("FORT_IDD", sql.VarChar, fortIDD)
       .query(`
         DELETE FROM APSTRANS
         WHERE CURYEAR=@CURYEAR
@@ -476,7 +476,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fort_iDD) {
       .input("PAIDAMOUNT", sql.Numeric(18,2), paymentItem.amount)
       .input("TRNSDT", sql.Date, new Date())
       .input("MERCHANT_REFF", sql.VarChar, merchant_reff)
-      .input("FORT_IDD", sql.VarChar, fort_iDD)
+      .input("FORT_IDD", sql.VarChar, fortIDD)
       .query(`
         INSERT INTO APSTRANS
           (
