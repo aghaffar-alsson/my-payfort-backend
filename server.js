@@ -165,7 +165,7 @@ app.post("/createFormPayLoad", async (req, res) => {
     await pool.request()
       .input("merchant_reference", sql.VarChar(50), orderID)
       .input("paymentItems", sql.NVarChar(sql.MAX), JSON.stringify(paymentItems))
-      .input("created_at", sql.Date, new Date())      
+      .input("created_at", sql.DateTime2, new Date())      
       .query(`
         INSERT INTO PayfortTempPaymentItems
         (merchant_reference, paymentItems,created_at)
@@ -474,7 +474,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
     // INSERT confirmed payment
     await request
       .input("PAIDAMOUNT", sql.Numeric(18,2), paymentItem.amount)
-      .input("TRNSDT", sql.Date, new Date())
+      .input("TRNSDT", sql.DateTime2, new Date())
       .input("MERCHANT_REFF", sql.VarChar, merchant_reff)
       .input("FORT_IDD", sql.VarChar, fortIDD)
       .query(`
