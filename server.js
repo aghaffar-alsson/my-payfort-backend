@@ -58,15 +58,21 @@ const transporter = nodemailer.createTransport({
   },
 });
 //**************HERE TO CHECK FOR THE UNSETTLED TRANSACTIONS*************
-async function isAlreadySettled(fort_id) {
+async function isAlreadySettled(merchant_id,fort_id,facename,instcode) {
   const pool = await sql.connect(sqlConfig);
 
   const result = await pool.request()
-    .input("fort_id", sql.VarChar, fort_id)
+    .input("merchant_reference", sql.VarChar(50), merchant_reference)
+    .input("fort_id", sql.VarChar(50), fort_id)      
+    .input("facename", sql.VarChar(50), facename)      
+    .input("instcode", sql.Int, instcode)     
     .query(`
       SELECT fort_id
       FROM APSTRANS
-      WHERE fort_id = @fort_id
+      WHERE fort_id = @fort_id 
+      and merchant_id = @merchant_id 
+      and facename = @facename
+      and instcode = @instcode
         AND SETTLED = 1
     `);
 
@@ -533,7 +539,7 @@ async function settlePaidFees(merchant_reference, fort_id, facename, instcode) {
       .input("merchant_reference", sql.VarChar(50), merchant_reference)
       .input("fort_id", sql.VarChar(50), fort_id)      
       .input("facename", sql.VarChar(50), facename)      
-      .input("instcode", sql.int, instcode)      
+      .input("instcode", sql.Int, instcode)      
       .query(`
         SELECT *
         FROM APSTRANS
@@ -554,7 +560,7 @@ async function settlePaidFees(merchant_reference, fort_id, facename, instcode) {
       .input("merchant_reference", sql.VarChar(50), merchant_reference)
       .input("fort_id", sql.VarChar(50), fort_id)
       .input("facename", sql.VarChar(50), facename)      
-      .input("instcode", sql.int, instcode)     
+      .input("instcode", sql.Int, instcode)     
       .query(`
         UPDATE APSTRANS
         SET SETTLED = 1
@@ -601,5 +607,6 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
