@@ -83,15 +83,45 @@ function getMerchantCredentials(schoolId) {
 
 
 // ---------- SIGNATURE HELPERS ----------
-function createSignature(params, schoolId) {
+
+//function createSignature(params, schoolId) {
   // Resolve credentials dynamically
-  const { request_phrase } = getMerchantCredentials(schoolId);  
-  const sorted = Object.keys(params).sort();
-  const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
+  //const { request_phrase } = getMerchantCredentials(schoolId);  
+  //const sorted = Object.keys(params).sort();
+  //const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
   //const toHash = `${process.env.AM_RequestPhrase}${concatenated}${process.env.AM_RequestPhrase}`;
-  const toHash = `${request_phrase}${concatenated}${request_phrase}`;
+  //const toHash = `${request_phrase}${concatenated}${request_phrase}`;
   
-  return crypto.createHash("sha256").update(toHash).digest("hex");
+  //return crypto.createHash("sha256").update(toHash).digest("hex");
+//}
+function createSignature(params, schoolId) {
+  const { request_phrase } = getMerchantCredentials(schoolId);
+
+  const filtered = {};
+  Object.keys(params).forEach((key) => {
+    const val = params[key];
+    if (
+      val !== undefined &&
+      val !== null &&
+      val !== "" &&
+      key !== "signature"
+    ) {
+      filtered[key] = String(val); // FORCE STRING
+    }
+  });
+
+  const sortedKeys = Object.keys(filtered).sort();
+
+  let base = request_phrase;
+  sortedKeys.forEach((key) => {
+    base += `${key}=${filtered[key]}`;
+  });
+  base += request_phrase;
+
+  return crypto
+    .createHash("sha256")
+    .update(base)
+    .digest("hex");
 }
 
 function verifySignature(params, schoolId) {
@@ -538,5 +568,6 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
