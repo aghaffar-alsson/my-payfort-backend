@@ -57,6 +57,22 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASS,
   },
 });
+//**************HERE TO CHECK FOR THE UNSETTLED TRANSACTIONS*************
+async function isAlreadySettled(fort_id) {
+  const pool = await sql.connect(sqlConfig);
+
+  const result = await pool.request()
+    .input("fort_id", sql.VarChar, fort_id)
+    .query(`
+      SELECT fort_id
+      FROM APSTRANS
+      WHERE fort_id = @fort_id
+        AND SETTLED = 1
+    `);
+
+  return result.recordset.length > 0;
+}
+
 //**********SWITCH PAYFORT CREDENTIALS ACCORDING TO THE SCHOOL ID*******
 function getMerchantCredentials(schoolId) {
   switch (schoolId) {
@@ -504,6 +520,59 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
   }
 }
 
+//here we are updating (set settled=1) on apstrans for the current fort_id & merchant_reference
+async function settlePaidFees(merchant_reference, fort_id, facename, instcode) {
+  const pool = await sql.connect(sqlConfig);
+  const transaction = new sql.Transaction(pool);
+
+  try {
+    await transaction.begin();
+
+    // 1️⃣ Lock rows
+    const itemsResult = await new sql.Request(transaction)
+      .input("merchant_reference", sql.VarChar(50), merchant_reference)
+      .input("fort_id", sql.VarChar(50), fort_id)      
+      .input("facename", sql.VarChar(50), facename)      
+      .input("instcode", sql.int, instcode)      
+      .query(`
+        SELECT *
+        FROM APSTRANS
+        WHERE merchant_reference = @merchant_reference
+          AND fort_id = @fort_id
+          AND facename = @facename
+          AND instcode = @instcode
+          AND SETTLED = 0
+      `);
+
+    if (!itemsResult.recordset.length) {
+      await transaction.rollback();
+      return;
+    }
+
+    // 2️⃣ Mark as settled
+    await new sql.Request(transaction)
+      .input("merchant_reference", sql.VarChar(50), merchant_reference)
+      .input("fort_id", sql.VarChar(50), fort_id)
+      .input("facename", sql.VarChar(50), facename)      
+      .input("instcode", sql.int, instcode)     
+      .query(`
+        UPDATE APSTRANS
+        SET SETTLED = 1
+        WHERE merchant_reference = @merchant_reference
+          AND fort_id = @fort_id 
+          AND facename = @facename
+          AND instcode = @instcode
+    `);
+
+    await transaction.commit();
+    console.log("Fees settled successfully:", merchant_reference);
+  } catch (err) {
+    await transaction.rollback();
+    console.error("Settlement failed:", err);
+    throw err;
+  }
+}
+//end of updating (set settled=1) on apstrans for the current fort_id & merchant_reference
 //API ENDPOINT TO LOG PAYMENT ITEMS
 app.post("/api/log-payment", async (req, res) => {
   const { paymentItems } = req.body;
@@ -532,4 +601,5 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
