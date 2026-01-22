@@ -173,6 +173,7 @@ app.post("/createFormPayLoad", async (req, res) => {
       currency: req.body.currency,
       customer_email: req.body.email,
       return_url: `${PUBLIC_URL}/payfort-callback`,
+      payment_option: "VISA",
     };
     console.log (formPayLoad)
     formPayLoad.signature = createSignature(formPayLoad, schoolCode);
@@ -568,6 +569,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
