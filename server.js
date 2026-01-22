@@ -284,6 +284,12 @@ async function handlePayfortCallback(req, res) {
             await keepTrackPaymentAction(item, merchant_reff, fortIDD);
         }
 
+      // Settle fees — ONCE per student / transaction batch
+      await pool.request()
+        .input("famid", sql.Int, paymentItems[0].famid)
+        .input("stid", sql.Int, paymentItems[0].stid)
+        .execute("sp_GetStFeesDetDue");
+      
   // 🧹 cleanup
   // await pool.request()
   //   .input("merchant_reference", sql.VarChar(50), merchant_reference)
