@@ -285,6 +285,12 @@ async function handlePayfortCallback(req, res) {
         for (const item of paymentItems) {
             await keepTrackPaymentAction(item, merchant_reff, fortIDD);
         }
+      // Here to Settle all paid transactions 
+      await pool.request()
+        .input("famid", sql.Int, paymentItems[0].famid)
+        .input("stid", sql.Int, paymentItems[0].stid)
+        .execute("sp_GetStFeesDetDue");
+      
 
   // 🧹 cleanup
   // await pool.request()
@@ -534,6 +540,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
