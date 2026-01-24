@@ -83,45 +83,15 @@ function getMerchantCredentials(schoolId) {
 
 
 // ---------- SIGNATURE HELPERS ----------
-
-//function createSignature(params, schoolId) {
-  // Resolve credentials dynamically
-  //const { request_phrase } = getMerchantCredentials(schoolId);  
-  //const sorted = Object.keys(params).sort();
-  //const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
-  //const toHash = `${process.env.AM_RequestPhrase}${concatenated}${process.env.AM_RequestPhrase}`;
-  //const toHash = `${request_phrase}${concatenated}${request_phrase}`;
-  
-  //return crypto.createHash("sha256").update(toHash).digest("hex");
-//}
 function createSignature(params, schoolId) {
-  const { request_phrase } = getMerchantCredentials(schoolId);
-
-  const filtered = {};
-  Object.keys(params).forEach((key) => {
-    const val = params[key];
-    if (
-      val !== undefined &&
-      val !== null &&
-      val !== "" &&
-      key !== "signature"
-    ) {
-      filtered[key] = String(val); // FORCE STRING
-    }
-  });
-
-  const sortedKeys = Object.keys(filtered).sort();
-
-  let base = request_phrase;
-  sortedKeys.forEach((key) => {
-    base += `${key}=${filtered[key]}`;
-  });
-  base += request_phrase;
-
-  return crypto
-    .createHash("sha256")
-    .update(base)
-    .digest("hex");
+  // Resolve credentials dynamically
+  const { request_phrase } = getMerchantCredentials(schoolId);  
+  const sorted = Object.keys(params).sort();
+  const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
+  //const toHash = `${process.env.AM_RequestPhrase}${concatenated}${process.env.AM_RequestPhrase}`;
+  const toHash = `${request_phrase}${concatenated}${request_phrase}`;
+  
+  return crypto.createHash("sha256").update(toHash).digest("hex");
 }
 
 function verifySignature(params, schoolId) {
@@ -173,9 +143,8 @@ app.post("/createFormPayLoad", async (req, res) => {
       currency: req.body.currency,
       customer_email: req.body.email,
       return_url: `${PUBLIC_URL}/payfort-callback`,
-      payment_option: "VISA",
     };
-    console.log (formPayLoad)
+
     formPayLoad.signature = createSignature(formPayLoad, schoolCode);
     //here insert a record to keeptrack the merchant reference and the school id
     const pool = await sql.connect(sqlConfig);    
@@ -315,12 +284,6 @@ async function handlePayfortCallback(req, res) {
             await keepTrackPaymentAction(item, merchant_reff, fortIDD);
         }
 
-      // Settle fees — ONCE per student / transaction batch
-      await pool.request()
-        .input("famid", sql.Int, paymentItems[0].famid)
-        .input("stid", sql.Int, paymentItems[0].stid)
-        .execute("sp_GetStFeesDetDue");
-      
   // 🧹 cleanup
   // await pool.request()
   //   .input("merchant_reference", sql.VarChar(50), merchant_reference)
@@ -569,8 +532,4 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-
-
-
 
