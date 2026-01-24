@@ -146,6 +146,7 @@ app.post("/createFormPayLoad", async (req, res) => {
     };
 
     formPayLoad.signature = createSignature(formPayLoad, schoolCode);
+    console.log(formPayLoad)
     //here insert a record to keeptrack the merchant reference and the school id
     const pool = await sql.connect(sqlConfig);    
     await pool.request()
@@ -532,4 +533,5 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
