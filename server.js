@@ -142,7 +142,6 @@ app.post("/createFormPayLoad", async (req, res) => {
       amount: req.body.amount * 100,
       currency: req.body.currency,
       customer_email: req.body.email,
-      payment_option: "VISA",
       eci: "ECOMMERCE",
       return_url: `${PUBLIC_URL}/payfort-callback`,
     };
@@ -535,6 +534,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
