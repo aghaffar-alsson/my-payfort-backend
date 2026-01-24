@@ -289,7 +289,7 @@ async function handlePayfortCallback(req, res) {
       await pool.request()
         .input("famid", sql.Int, paymentItems[0].famid)
         .input("stid", sql.Int, paymentItems[0].stid)
-        .execute("sp_GetStFeesDetDue");
+        .execute("sp_GetStFeesDetDue_2");
       
 
   // 🧹 cleanup
@@ -540,6 +540,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
