@@ -273,7 +273,7 @@ async function handlePayfortCallback(req, res) {
             .query(`
             SELECT paymentItems 
             FROM PayfortTempPaymentItems
-            WHERE merchant_reference=@merchantreff
+            WHERE merchant_reference=@merchantreff 
             `);
 
         if (!itemsResult.recordset.length) {
@@ -535,6 +535,7 @@ app.post("/payfort-callback", handlePayfortCallback);
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 
 
