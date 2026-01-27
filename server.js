@@ -499,7 +499,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
             @CURYEAR, @S_CODE, @FAMID, @SCHOOLID,
             @INSTCODE, @FACENAME,
             @PAIDAMOUNT, @TRNSDT, 0,
-            @MERCHANT_REFF, @FORT_IDD, 0, ''
+            @MERCHANT_REFF, @FORT_IDD, 0, 'aghaffar@alsson.com'
           )
       `);
 
@@ -542,6 +542,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // ---------- END OF FILE ----------
+
 
 
 
