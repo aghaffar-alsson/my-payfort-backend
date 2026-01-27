@@ -492,14 +492,14 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
             CURYEAR, S_CODE, FAMID, SCHOOLID,
             InstCode, FACENAME,
             PAIDAMOUNT, TRNSDT, SETTLED,
-            merchant_reference, fort_id,confrmd
+            merchant_reference, fort_id,confrmd, emll
           )
         VALUES
           (
             @CURYEAR, @S_CODE, @FAMID, @SCHOOLID,
             @INSTCODE, @FACENAME,
             @PAIDAMOUNT, @TRNSDT, 0,
-            @MERCHANT_REFF, @FORT_IDD, 0
+            @MERCHANT_REFF, @FORT_IDD, 0, ''
           )
       `);
 
@@ -542,6 +542,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // ---------- END OF FILE ----------
+
 
 
 
