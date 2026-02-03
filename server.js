@@ -44,7 +44,7 @@ const sqlConfig = {
     encrypt: false,
     trustServerCertificate: true,
   },
-  requestTimeout: 15000,
+  requestTimeout: 25000,
 };
 
 // ---------- NODEMAILER ----------
@@ -542,6 +542,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // ---------- END OF FILE ----------
+
 
 
 
