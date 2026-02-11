@@ -301,13 +301,16 @@ async function handlePayfortCallback(req, res) {
   //   `);
 }    
 
+    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+    
     const redirectUrl =
-      `http://localhost:5173/checkout-result?status=${success ? "success" : "failed"}` +
+      `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
       `&amount=${payload.amount}` +
       `&fort_id=${payload.fort_id}` +
       `&merchant_reference=${payload.merchant_reference}` +
       `&response_message=${encodeURIComponent(payload.response_message || "")}` +
-      `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;
+      `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;    
+
 
     return res.redirect(302, redirectUrl);
 
@@ -542,6 +545,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // ---------- END OF FILE ----------
+
 
 
 
