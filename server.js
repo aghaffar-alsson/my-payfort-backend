@@ -125,10 +125,24 @@ function generateMerchantReference(length = 12) {
 // ---------- CREATE FORM PAYLOAD ----------
 app.post("/createFormPayLoad", async (req, res) => {
   try {
-    const { amount, currency, email, schoolId,  paymentItems = [] } = req.body;    
+    const { amount, currency, email, schoolId,  paymentItems = [], frontendOrigin } = req.body;    
     const schoolCode = Number(schoolId);
     if (![1, 2].includes(schoolCode)) {
       return res.status(400).json({ error: "Invalid schoolId" });
+    }    
+
+    if (!frontendOrigin) {
+      return res.status(400).json({ error: "frontendOrigin is required" });
+    }
+
+    // 🔐 Optional security whitelist
+    const allowedOrigins = [
+      "http://localhost:5173",
+      "https://alsson-web-fees-features-2pr9.vercel.app"
+    ];
+
+    if (!allowedOrigins.includes(frontendOrigin)) {
+      return res.status(400).json({ error: "Invalid frontend origin" });
     }    
     const orderID = generateMerchantReference();
     // Resolve credentials dynamically
@@ -156,11 +170,12 @@ app.post("/createFormPayLoad", async (req, res) => {
       .input("amount", sql.Int, req.body.amount * 100)
       .input("currency", sql.Char(3), req.body.currency)
       .input("customer_email", sql.NVarChar(255), req.body.email)
+      .input("frontend_origin", sql.NVarChar(255), frontendOrigin)      
       .query(`
         INSERT INTO PayfortTransactions
-        (merchant_reference, school_id, amount, currency, customer_email, status)
+        (merchant_reference, school_id, amount, currency, customer_email, status, frontend_origin)
         VALUES
-        (@merchant_reference, @school_id, @amount, @currency, @customer_email, 'PENDING')
+        (@merchant_reference, @school_id, @amount, @currency, @customer_email, 'PENDING', @frontend_origin)
       `);
 
     //Save detailed items as JSON ON TEMPORARY TABLE
@@ -230,7 +245,7 @@ async function handlePayfortCallback(req, res) {
     const result = await pool.request()
       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
       .query(`
-        SELECT school_id
+        SELECT school_id, frontend_origin
         FROM PayfortTransactions
         WHERE merchant_reference = @merchant_reference
       `);
@@ -240,7 +255,8 @@ async function handlePayfortCallback(req, res) {
     }
 
     const schoolId = result.recordset[0].school_id;
-
+    const FRONTEND_URL = result.recordset[0].frontend_origin;
+    
     // Verify signature with correct response phrase
     if (!verifySignature(payload, schoolId)) {
       return res.status(400).send("Invalid signature");
@@ -301,7 +317,7 @@ async function handlePayfortCallback(req, res) {
   //   `);
 }    
 
-    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+    //const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
     
     const redirectUrl =
       `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
@@ -545,6 +561,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // ---------- END OF FILE ----------
+
 
 
 
