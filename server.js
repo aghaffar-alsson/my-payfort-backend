@@ -138,6 +138,7 @@ app.post("/createFormPayLoad", async (req, res) => {
     // 🔐 Optional security whitelist
     const allowedOrigins = [
       "http://localhost:5173",
+      "http://localhost:5174",
       "https://alsson-web-fees-features-2pr9.vercel.app"
     ];
 
@@ -561,6 +562,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // ---------- END OF FILE ----------
+
 
 
 
