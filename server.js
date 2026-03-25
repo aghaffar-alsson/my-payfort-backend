@@ -83,44 +83,70 @@ function getMerchantCredentials(schoolId) {
 
 
 // ---------- SIGNATURE HELPERS ----------
+//function createSignature(params, schoolId) {
+//  // Resolve credentials dynamically
+//  const { request_phrase } = getMerchantCredentials(schoolId);  
+//  const sorted = Object.keys(params).sort();
+//  const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
+//  //const toHash = `${process.env.AM_RequestPhrase}${concatenated}${process.env.AM_RequestPhrase}`;
+//  const toHash = `${request_phrase}${concatenated}${request_phrase}`;
+//  
+//  return crypto.createHash("sha256").update(toHash).digest("hex");
+//}
 function createSignature(params, schoolId) {
-  // Resolve credentials dynamically
-  const { request_phrase } = getMerchantCredentials(schoolId);  
-  const sorted = Object.keys(params).sort();
-  const concatenated = sorted.map((key) => `${key}=${params[key]}`).join("");
-  //const toHash = `${process.env.AM_RequestPhrase}${concatenated}${process.env.AM_RequestPhrase}`;
-  const toHash = `${request_phrase}${concatenated}${request_phrase}`;
-  
-  return crypto.createHash("sha256").update(toHash).digest("hex");
+  const { request_phrase } = getMerchantCredentials(schoolId);
+
+  const phrase = String(request_phrase || "").trim();
+
+  const sortedKeys = Object.keys(params).sort();
+
+  const concatenated = sortedKeys
+    .map((key) => `${key}=${params[key]}`)
+    .join("");
+
+  const stringToHash = `${phrase}${concatenated}${phrase}`;
+
+  const signature = crypto
+    .createHash("sha256")
+    .update(stringToHash, "utf8")
+    .digest("hex");
+
+  return signature;
 }
 
 function verifySignature(params, schoolId) {
-  // Resolve credentials dynamically
-  const { response_phrase } = getMerchantCredentials(schoolId);  
-  
-  const { signature, ...data } = params;
+  const { response_phrase } = getMerchantCredentials(schoolId);
+
+  const phrase = String(response_phrase || "").trim();
+
+  const data = { ...params };
+  const receivedSignature = String(data.signature || "").trim().toLowerCase();
+  delete data.signature;
+
   const sortedKeys = Object.keys(data).sort();
-  let base = response_phrase;
 
-  sortedKeys.forEach((key) => {
-    if (data[key] !== null && data[key] !== "") {
-      base += `${key}=${data[key]}`;
-    }
-  });
+  const concatenated = sortedKeys
+    .map((key) => `${key}=${data[key]}`)
+    .join("");
 
-  base += response_phrase;
-  const hash = crypto.createHash("sha256").update(base).digest("hex");
-  return hash === signature;
+  const stringToHash = `${phrase}${concatenated}${phrase}`;
+
+  const generatedSignature = crypto
+    .createHash("sha256")
+    .update(stringToHash, "utf8")
+    .digest("hex")
+    .toLowerCase();
+
+  console.log("=== APS VERIFY DEBUG ===");
+  console.log("Sorted Keys:", sortedKeys);
+  console.log("Concatenated:", concatenated);
+  console.log("String To Hash:", stringToHash);
+  console.log("Generated Signature:", generatedSignature);
+  console.log("Received Signature:", receivedSignature);
+
+  return generatedSignature === receivedSignature;
 }
 
-function generateMerchantReference(length = 12) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `TXN-${result}`;
-}
 
 // ---------- CREATE FORM PAYLOAD ----------
 app.post("/createFormPayLoad", async (req, res) => {
