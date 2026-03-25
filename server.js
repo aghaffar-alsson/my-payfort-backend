@@ -93,25 +93,21 @@ function getMerchantCredentials(schoolId) {
 //  
 //  return crypto.createHash("sha256").update(toHash).digest("hex");
 //}
+//CREATE PAYFORT SIGNATURE
 function createSignature(params, schoolId) {
   const { request_phrase } = getMerchantCredentials(schoolId);
+  const sorted = Object.keys(params).sort();
 
-  const phrase = String(request_phrase || "").trim();
-
-  const sortedKeys = Object.keys(params).sort();
-
-  const concatenated = sortedKeys
-    .map((key) => `${key}=${params[key]}`)
+  const concatenated = sorted
+    .map((key) => `${key}=${String(params[key]).trim()}`)
     .join("");
 
-  const stringToHash = `${phrase}${concatenated}${phrase}`;
+  const toHash = `${request_phrase}${concatenated}${request_phrase}`;
 
-  const signature = crypto
-    .createHash("sha256")
-    .update(stringToHash, "utf8")
-    .digest("hex");
+  console.log("=== SIGNATURE DEBUG ===");
+  console.log("Signature base string:", toHash);
 
-  return signature;
+  return crypto.createHash("sha256").update(toHash).digest("hex");
 }
 
 function verifySignature(params, schoolId) {
@@ -159,11 +155,20 @@ function generateMerchantReference(length = 12) {
 // ---------- CREATE FORM PAYLOAD ----------
 app.post("/createFormPayLoad", async (req, res) => {
   try {
-    const { amount, currency, email, schoolId,  paymentItems = [], frontendOrigin } = req.body;    
+    const {
+      amount,
+      currency,
+      email,
+      schoolId,
+      paymentItems = [],
+      frontendOrigin
+    } = req.body;
+
     const schoolCode = Number(schoolId);
+
     if (![1, 2].includes(schoolCode)) {
       return res.status(400).json({ error: "Invalid schoolId" });
-    }    
+    }
 
     if (!frontendOrigin) {
       return res.status(400).json({ error: "frontendOrigin is required" });
@@ -178,34 +183,62 @@ app.post("/createFormPayLoad", async (req, res) => {
 
     if (!allowedOrigins.includes(frontendOrigin)) {
       return res.status(400).json({ error: "Invalid frontend origin" });
-    }    
+    }
+
+    // Validate amount
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({ error: "Invalid amount" });
+    }
+
+    // APS requires MINOR UNITS as INTEGER STRING
+    // Example: 61784.86 EGP => "6178486"
+    const apsAmount = String(Math.round(numericAmount * 100));
+
+    // Safe email fallback
+    const safeEmail = String(email || "noemail@example.com").trim();
+
     const orderID = generateMerchantReference();
+
     // Resolve credentials dynamically
-    const { merchant_identifier, access_code } = getMerchantCredentials(schoolCode);    
+    const { merchant_identifier, access_code } = getMerchantCredentials(schoolCode);
+
     let formPayLoad = {
       command: "PURCHASE",
       language: "en",
-      merchant_identifier: merchant_identifier,
-      access_code: access_code,
+      merchant_identifier: String(merchant_identifier).trim(),
+      access_code: String(access_code).trim(),
       merchant_reference: orderID,
-      amount: req.body.amount * 100,
-      currency: req.body.currency,
-      customer_email: req.body.email,
+      amount: apsAmount, // IMPORTANT: string integer
+      currency: String(currency).trim(),
+      customer_email: safeEmail,
       eci: "ECOMMERCE",
       return_url: `${PUBLIC_URL}/payfort-callback`,
     };
 
+    console.log("=== CREATE FORM PAYLOAD DEBUG ===");
+    console.log("Frontend amount (major units):", amount);
+    console.log("Numeric amount:", numericAmount);
+    console.log("APS amount (minor units):", apsAmount);
+    console.log("schoolCode:", schoolCode);
+    console.log("safeEmail:", safeEmail);
+    console.log("Payload BEFORE signature:", formPayLoad);
+
     formPayLoad.signature = createSignature(formPayLoad, schoolCode);
-    console.log(formPayLoad)
-    //here insert a record to keeptrack the merchant reference and the school id
-    const pool = await sql.connect(sqlConfig);    
+
+    console.log("Generated signature:", formPayLoad.signature);
+    console.log("Payload AFTER signature:", formPayLoad);
+
+    // here insert a record to keep track the merchant reference and the school id
+    const pool = await sql.connect(sqlConfig);
+
     await pool.request()
       .input("merchant_reference", sql.VarChar(50), orderID)
       .input("school_id", sql.Int, schoolCode)
-      .input("amount", sql.Int, req.body.amount * 100)
-      .input("currency", sql.Char(3), req.body.currency)
-      .input("customer_email", sql.NVarChar(255), req.body.email)
-      .input("frontend_origin", sql.NVarChar(255), frontendOrigin)      
+      .input("amount", sql.Int, Number(apsAmount)) // IMPORTANT
+      .input("currency", sql.Char(3), String(currency).trim())
+      .input("customer_email", sql.NVarChar(255), safeEmail)
+      .input("frontend_origin", sql.NVarChar(255), frontendOrigin)
       .query(`
         INSERT INTO PayfortTransactions
         (merchant_reference, school_id, amount, currency, customer_email, status, frontend_origin)
@@ -213,22 +246,25 @@ app.post("/createFormPayLoad", async (req, res) => {
         (@merchant_reference, @school_id, @amount, @currency, @customer_email, 'PENDING', @frontend_origin)
       `);
 
-    //Save detailed items as JSON ON TEMPORARY TABLE
+    // Save detailed items as JSON ON TEMPORARY TABLE
     await pool.request()
       .input("merchant_reference", sql.VarChar(50), orderID)
       .input("paymentItems", sql.NVarChar(sql.MAX), JSON.stringify(paymentItems))
-      .input("created_at", sql.DateTime2, new Date())      
+      .input("created_at", sql.DateTime2, new Date())
       .query(`
         INSERT INTO PayfortTempPaymentItems
-        (merchant_reference, paymentItems,created_at)
+        (merchant_reference, paymentItems, created_at)
         VALUES
         (@merchant_reference, @paymentItems, @created_at)
-      `);      
-    //end of keep tracking
+      `);
+
     res.json(formPayLoad);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error creating Payfort payload" });
+    console.error("createFormPayLoad error:", error);
+    res.status(500).json({
+      error: "Error creating Payfort payload",
+      details: error.message
+    });
   }
 });
 
