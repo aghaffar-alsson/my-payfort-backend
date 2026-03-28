@@ -186,7 +186,8 @@ const {
     const allowedOrigins = [
       "http://localhost:5173",
       "http://localhost:5174",
-      "https://alsson-web-fees-features-2pr9.vercel.app"
+      "https://alsson-web-fees-features-2pr9.vercel.app",
+      "https://fees.family.alsson.app",
     ];
 
     if (!allowedOrigins.includes(frontendOrigin)) {
