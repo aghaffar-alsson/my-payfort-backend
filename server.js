@@ -489,12 +489,21 @@ if (success) {
     await keepTrackPaymentAction(item, merchant_reff, fortIDD);
   }
 
-  // Settle paid transactions
-  await pool.request()
-    .input("famid", sql.Int, paymentItems[0].famid)
-    .input("stid", sql.Int, paymentItems[0].stid)
-    .input("trgtYr", sql.Int, paymentItems[0].curyear)
-    .execute("sp_GetStFeesDetDue_2");
+const { famid, stid, curyear } = paymentItems[0];
+    
+    const famId = Number(famid);
+    const stId = Number(stid);
+    const year = Number(curyear);
+    
+    if (!Number.isInteger(year)) {
+      throw new Error(`Invalid CURYEAR: ${curyear}`);
+    }
+    
+    await pool.request()
+      .input("famid", sql.Int, famId)
+      .input("stid", sql.Int, stId)
+      .input("trgtYr", sql.Int, year)
+      .execute("sp_GetStFeesDetDue_2");
 
   // Optional cleanup
   // await pool.request()
