@@ -601,6 +601,36 @@ if (success) {
   console.log("All settlements completed successfully");
 }
 
+    //const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+    // const redirectUrl =
+    //   `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
+    //   `&amount=${payload.amount}` +
+    //   `&fort_id=${payload.fort_id}` +
+    //   `&merchant_reference=${payload.merchant_reference}` +
+    //   `&response_message=${encodeURIComponent(payload.response_message || "")}` +
+    //   `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;   
+
+const redirectUrl =
+  `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
+  `&amount=${payload.amount || ""}` +
+  `&fort_id=${payload.fort_id || ""}` +
+  `&merchant_reference=${payload.merchant_reference || ""}` +
+  `&response_message=${encodeURIComponent(payload.response_message || "")}` +
+  `&customer_email=${encodeURIComponent(payload.customer_email || "")}` +
+  `&student_id=${encodeURIComponent(student_id)}` +
+  `&student_name=${encodeURIComponent(student_name)}` +
+  `&cur_ygp=${encodeURIComponent(cur_ygp)}`;
+    
+
+    return res.redirect(302, redirectUrl);
+
+  } catch (err) {
+    console.error("Callback error:", err);
+    return res.status(500).send("Callback error");
+  }
+}
+
 
 // const __filename = fileURLToPath(import.meta.url);
 // const __dirname = path.dirname(__filename);
@@ -763,4 +793,21 @@ app.post("/payfort-callback", handlePayfortCallback);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-// ---------- END OF FILE ----------//
+// ---------- END OF FILE ----------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
