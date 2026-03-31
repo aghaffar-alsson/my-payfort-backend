@@ -399,6 +399,68 @@ async function logPaymentAction(payload) {
   }
 }
 
+// ---------- LOG PAYMENT ACTION ----------
+async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
+  const pool = await sql.connect(sqlConfig);
+  const transaction = new sql.Transaction(pool);
+
+  try {
+    await transaction.begin();
+    const request = new sql.Request(transaction);
+    // DELETE pending record for same item
+    await request
+      .input("CURYEAR", sql.VarChar, paymentItem.curyear)
+      .input("S_CODE", sql.VarChar, paymentItem.stid)
+      .input("FAMID", sql.Int, paymentItem.famid)
+      .input("SCHOOLID", sql.Int, paymentItem.schoolId)
+      .input("INSTCODE", sql.Int, paymentItem.instCode)
+      .input("FACENAME", sql.VarChar, paymentItem.facename)
+      .input("MERCHANTREFF_1", sql.VarChar, merchant_reff)
+      .input("FORT_IDD_1", sql.VarChar, fortIDD)
+      .query(`
+        DELETE FROM APSTRANS
+        WHERE CURYEAR=@CURYEAR
+          AND S_CODE=@S_CODE
+          AND FAMID=@FAMID
+          AND SCHOOLID=@SCHOOLID
+          AND InstCode=@INSTCODE
+          AND FACENAME=@FACENAME
+          AND SETTLED=0
+          AND merchant_reference=@MERCHANTREFF_1
+          AND FORT_ID=@FORT_IDD_1
+      `);
+
+    // INSERT confirmed payment
+    await request
+      .input("PAIDAMOUNT", sql.Numeric(18,2), paymentItem.amount)
+      .input("TRNSDT", sql.DateTime2, new Date())
+      .input("MERCHANT_REFF", sql.VarChar, merchant_reff)
+      .input("FORT_IDD", sql.VarChar, fortIDD)
+      .query(`
+        INSERT INTO APSTRANS
+          (
+            CURYEAR, S_CODE, FAMID, SCHOOLID,
+            InstCode, FACENAME,
+            PAIDAMOUNT, TRNSDT, SETTLED,
+            merchant_reference, fort_id,confrmd, emll
+          )
+        VALUES
+          (
+            @CURYEAR, @S_CODE, @FAMID, @SCHOOLID,
+            @INSTCODE, @FACENAME,
+            @PAIDAMOUNT, @TRNSDT, 0,
+            @MERCHANT_REFF, @FORT_IDD, 0, 'aghaffar@alsson.com'
+          )
+      `);
+
+    await transaction.commit();
+    console.log("Payment item settled:", paymentItem.facename);
+  } catch (err) {
+    await transaction.rollback();
+    console.error("SQL Error:", err);
+    throw err;
+  }
+}
 // ---------- CALLBACK HANDLER ----------
 async function handlePayfortCallback(req, res) {
   try {
@@ -489,21 +551,21 @@ if (success) {
     await keepTrackPaymentAction(item, merchant_reff, fortIDD);
   }
 
-const { famid, stid, curyear } = paymentItems[0];
-    
-    const famId = Number(famid);
-    const stId = Number(stid);
-    const year = Number(curyear);
-    
-    if (!Number.isInteger(year)) {
-      throw new Error(`Invalid CURYEAR: ${curyear}`);
-    }
-    
-    await pool.request()
-      .input("famid", sql.Int, famId)
-      .input("stid", sql.Int, stId)
-      .input("trgtYr", sql.Int, year)
-      .execute("sp_GetStFeesDetDue_2");
+  const { famid, stid, curyear } = paymentItems[0];
+
+  const famId = Number(famid);
+  const stId = Number(stid);
+  const year = Number(curyear);
+
+  if (!Number.isInteger(year)) {
+    throw new Error(`Invalid CURYEAR: ${curyear}`);
+  }
+
+  await pool.request()
+    .input("famid", sql.Int, famId)
+    .input("stid", sql.Int, stId)
+    .input("trgtYr", sql.Int, year)
+    .execute("sp_GetStFeesDetDue_2");
 
   // Optional cleanup
   // await pool.request()
@@ -676,68 +738,6 @@ Download receipt: ${publicUrl}`;
   }
 });
 
-// ---------- LOG PAYMENT ACTION ----------
-async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
-  const pool = await sql.connect(sqlConfig);
-  const transaction = new sql.Transaction(pool);
-
-  try {
-    await transaction.begin();
-    const request = new sql.Request(transaction);
-    // DELETE pending record for same item
-    await request
-      .input("CURYEAR", sql.VarChar, paymentItem.curyear)
-      .input("S_CODE", sql.VarChar, paymentItem.stid)
-      .input("FAMID", sql.Int, paymentItem.famid)
-      .input("SCHOOLID", sql.Int, paymentItem.schoolId)
-      .input("INSTCODE", sql.Int, paymentItem.instCode)
-      .input("FACENAME", sql.VarChar, paymentItem.facename)
-      .input("MERCHANTREFF_1", sql.VarChar, merchant_reff)
-      .input("FORT_IDD_1", sql.VarChar, fortIDD)
-      .query(`
-        DELETE FROM APSTRANS
-        WHERE CURYEAR=@CURYEAR
-          AND S_CODE=@S_CODE
-          AND FAMID=@FAMID
-          AND SCHOOLID=@SCHOOLID
-          AND InstCode=@INSTCODE
-          AND FACENAME=@FACENAME
-          AND SETTLED=0
-          AND merchant_reference=@MERCHANTREFF_1
-          AND FORT_ID=@FORT_IDD_1
-      `);
-
-    // INSERT confirmed payment
-    await request
-      .input("PAIDAMOUNT", sql.Numeric(18,2), paymentItem.amount)
-      .input("TRNSDT", sql.DateTime2, new Date())
-      .input("MERCHANT_REFF", sql.VarChar, merchant_reff)
-      .input("FORT_IDD", sql.VarChar, fortIDD)
-      .query(`
-        INSERT INTO APSTRANS
-          (
-            CURYEAR, S_CODE, FAMID, SCHOOLID,
-            InstCode, FACENAME,
-            PAIDAMOUNT, TRNSDT, SETTLED,
-            merchant_reference, fort_id,confrmd, emll
-          )
-        VALUES
-          (
-            @CURYEAR, @S_CODE, @FAMID, @SCHOOLID,
-            @INSTCODE, @FACENAME,
-            @PAIDAMOUNT, @TRNSDT, 0,
-            @MERCHANT_REFF, @FORT_IDD, 0, 'aghaffar@alsson.com'
-          )
-      `);
-
-    await transaction.commit();
-    console.log("Payment item settled:", paymentItem.facename);
-  } catch (err) {
-    await transaction.rollback();
-    console.error("SQL Error:", err);
-    throw err;
-  }
-}
 
 //API ENDPOINT TO LOG PAYMENT ITEMS
 app.post("/api/log-payment", async (req, res) => {
