@@ -528,7 +528,7 @@ await pool.request()
 
 if (success) {
   await logPaymentAction(payload);
-
+  console
   const merchant_reff = payload.merchant_reference;
   const fortIDD = payload.fort_id;
 
@@ -539,34 +539,34 @@ if (success) {
       FROM PayfortTempPaymentItems
       WHERE merchant_reference = @merchantreff
     `);
-
+      console.log("Payment items fetched from DB:", itemsResult.recordset);
   if (!itemsResult.recordset.length) {
     throw new Error("Payment items not found");
   }
 
   const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
   console.log("Payment Items to log:", paymentItems);
-
+console.log("Merchant Reference:", merchant_reff);
   for (const item of paymentItems) {
     await keepTrackPaymentAction(item, merchant_reff, fortIDD);
   }
-
+console.log("All payment items processed for merchant reference:", merchant_reff);
   const { famid, stid, curyear } = paymentItems[0];
 
   const famId = Number(famid);
   const stId = Number(stid);
   const year = Number(curyear);
-
+console.log("Parsed IDs:", { famId, stId, year });
   if (!Number.isInteger(year)) {
     throw new Error(`Invalid CURYEAR: ${curyear}`);
   }
-
+console.log("Fetching updated fees details for student...");
   await pool.request()
     .input("famid", sql.Int, famId)
     .input("stid", sql.Int, stId)
     .input("trgtYr", sql.Int, year)
     .execute("sp_GetStFeesDetDue_2");
-
+console.log("Updated fees details fetched successfully");
   // Optional cleanup
   // await pool.request()
   //   .input("merchant_reference", sql.VarChar(50), merchant_reff)
@@ -768,21 +768,4 @@ app.post("/payfort-callback", handlePayfortCallback);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-// ---------- END OF FILE ----------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// ---------- END OF FILE ----------//
