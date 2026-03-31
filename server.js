@@ -528,7 +528,7 @@ await pool.request()
 
 if (success) {
   await logPaymentAction(payload);
-  console
+
   const merchant_reff = payload.merchant_reference;
   const fortIDD = payload.fort_id;
 
@@ -539,71 +539,66 @@ if (success) {
       FROM PayfortTempPaymentItems
       WHERE merchant_reference = @merchantreff
     `);
-      console.log("Payment items fetched from DB:", itemsResult.recordset);
+
+  console.log("Payment items fetched from DB:", itemsResult.recordset);
+
   if (!itemsResult.recordset.length) {
     throw new Error("Payment items not found");
   }
 
   const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
   console.log("Payment Items to log:", paymentItems);
-console.log("Merchant Reference:", merchant_reff);
+  console.log("Merchant Reference:", merchant_reff);
+
+  // 1) Process each payment item individually
   for (const item of paymentItems) {
     await keepTrackPaymentAction(item, merchant_reff, fortIDD);
   }
-console.log("All payment items processed for merchant reference:", merchant_reff);
-  const { famid, stid, curyear } = paymentItems[0];
 
-  const famId = Number(famid);
-  const stId = Number(stid);
-  const year = Number(curyear);
-console.log("Parsed IDs:", { famId, stId, year });
-  if (!Number.isInteger(year)) {
-    throw new Error(`Invalid CURYEAR: ${curyear}`);
+  console.log("All payment items processed for merchant reference:", merchant_reff);
+
+  // 2) Settle once per unique (famid, stid, curyear)
+  const uniqueSettlements = new Map();
+
+  for (const item of paymentItems) {
+    const famId = Number(item.famid);
+    const stId = Number(item.stid);
+    const year = Number(item.curyear);
+
+    if (!Number.isInteger(famId)) {
+      throw new Error(`Invalid FAMID: ${item.famid}`);
+    }
+
+    if (!Number.isInteger(stId)) {
+      throw new Error(`Invalid STID: ${item.stid}`);
+    }
+
+    if (!Number.isInteger(year)) {
+      throw new Error(`Invalid CURYEAR: ${item.curyear}`);
+    }
+
+    const key = `${famId}_${stId}_${year}`;
+
+    if (!uniqueSettlements.has(key)) {
+      uniqueSettlements.set(key, { famId, stId, year });
+    }
   }
-console.log("Fetching updated fees details for student...");
-  await pool.request()
-    .input("famid", sql.Int, famId)
-    .input("stid", sql.Int, stId)
-    .input("trgtYr", sql.Int, year)
-    .execute("sp_GetStFeesDetDue_2");
-console.log("Updated fees details fetched successfully");
-  // Optional cleanup
-  // await pool.request()
-  //   .input("merchant_reference", sql.VarChar(50), merchant_reff)
-  //   .query(`
-  //     DELETE FROM PayfortTempPaymentItems
-  //     WHERE merchant_reference = @merchant_reference
-  //   `);
-}
 
-    //const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+  console.log("Unique settlement groups:", [...uniqueSettlements.values()]);
 
-    // const redirectUrl =
-    //   `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
-    //   `&amount=${payload.amount}` +
-    //   `&fort_id=${payload.fort_id}` +
-    //   `&merchant_reference=${payload.merchant_reference}` +
-    //   `&response_message=${encodeURIComponent(payload.response_message || "")}` +
-    //   `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;   
+  for (const settlement of uniqueSettlements.values()) {
+    console.log("Running sp_GetStFeesDetDue_2 for:", settlement);
 
-const redirectUrl =
-  `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
-  `&amount=${payload.amount || ""}` +
-  `&fort_id=${payload.fort_id || ""}` +
-  `&merchant_reference=${payload.merchant_reference || ""}` +
-  `&response_message=${encodeURIComponent(payload.response_message || "")}` +
-  `&customer_email=${encodeURIComponent(payload.customer_email || "")}` +
-  `&student_id=${encodeURIComponent(student_id)}` +
-  `&student_name=${encodeURIComponent(student_name)}` +
-  `&cur_ygp=${encodeURIComponent(cur_ygp)}`;
-    
+    await pool.request()
+      .input("famid", sql.Int, settlement.famId)
+      .input("stid", sql.Int, settlement.stId)
+      .input("trgtYr", sql.Int, settlement.year)
+      .execute("sp_GetStFeesDetDue_2");
 
-    return res.redirect(302, redirectUrl);
-
-  } catch (err) {
-    console.error("Callback error:", err);
-    return res.status(500).send("Callback error");
+    console.log("Settlement completed for:", settlement);
   }
+
+  console.log("All settlements completed successfully");
 }
 
 
