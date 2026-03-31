@@ -409,7 +409,7 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
     const request = new sql.Request(transaction);
     // DELETE pending record for same item
     await request
-      .input("CURYEAR", sql.VarChar, paymentItem.curyear)
+      .input("CURYEAR", sql.Int, paymentItem.curyear)
       .input("S_CODE", sql.VarChar, paymentItem.stid)
       .input("FAMID", sql.Int, paymentItem.famid)
       .input("SCHOOLID", sql.Int, paymentItem.schoolId)
