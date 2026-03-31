@@ -493,7 +493,7 @@ if (success) {
   await pool.request()
     .input("famid", sql.Int, paymentItems[0].famid)
     .input("stid", sql.Int, paymentItems[0].stid)
-    .input("trgtYr", sql.Varchar, paymentItems[0].curyear)
+    .input("trgtYr", sql.Int, paymentItems[0].curyear)
     .execute("sp_GetStFeesDetDue_2");
 
   // Optional cleanup
