@@ -547,23 +547,40 @@ if (success) {
   }
 
   const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
-  console.log("Payment Items to log:", paymentItems);
+  console.log("Parsed paymentItems:", JSON.stringify(paymentItems, null, 2));
   console.log("Merchant Reference:", merchant_reff);
 
   // 1) Process each payment item individually
-  for (const item of paymentItems) {
+  for (let i = 0; i < paymentItems.length; i++) {
+    const item = paymentItems[i];
+    console.log(`keepTrackPaymentAction START [${i}]`, item);
+
     await keepTrackPaymentAction(item, merchant_reff, fortIDD);
+
+    console.log(`keepTrackPaymentAction DONE [${i}]`, item);
   }
 
   console.log("All payment items processed for merchant reference:", merchant_reff);
 
-  // 2) Settle once per unique (famid, stid, curyear)
+  // 2) Build unique settlement groups
   const uniqueSettlements = new Map();
 
-  for (const item of paymentItems) {
+  for (let i = 0; i < paymentItems.length; i++) {
+    const item = paymentItems[i];
+
     const famId = Number(item.famid);
     const stId = Number(item.stid);
     const year = Number(item.curyear);
+
+    console.log(`Settlement candidate [${i}]`, {
+      raw: item,
+      famId,
+      stId,
+      year,
+      isFamInt: Number.isInteger(famId),
+      isStInt: Number.isInteger(stId),
+      isYearInt: Number.isInteger(year),
+    });
 
     if (!Number.isInteger(famId)) {
       throw new Error(`Invalid FAMID: ${item.famid}`);
@@ -581,21 +598,38 @@ if (success) {
 
     if (!uniqueSettlements.has(key)) {
       uniqueSettlements.set(key, { famId, stId, year });
+      console.log("Added unique settlement:", key);
+    } else {
+      console.log("Skipped duplicate settlement:", key);
     }
   }
 
-  console.log("Unique settlement groups:", [...uniqueSettlements.values()]);
+  const settlements = [...uniqueSettlements.values()];
+  console.log("Unique settlement groups FINAL:", settlements);
 
-  for (const settlement of uniqueSettlements.values()) {
-    console.log("Running sp_GetStFeesDetDue_2 for:", settlement);
+  // 3) Execute settlement for each unique group
+  for (let i = 0; i < settlements.length; i++) {
+    const settlement = settlements[i];
 
-    await pool.request()
-      .input("famid", sql.Int, settlement.famId)
-      .input("stid", sql.Int, settlement.stId)
-      .input("trgtYr", sql.Int, settlement.year)
-      .execute("sp_GetStFeesDetDue_2");
+    console.log(`sp_GetStFeesDetDue_2 START [${i}]`, settlement);
 
-    console.log("Settlement completed for:", settlement);
+    try {
+      const spResult = await pool.request()
+        .input("famid", sql.Int, settlement.famId)
+        .input("stid", sql.Int, settlement.stId)
+        .input("trgtYr", sql.Int, settlement.year)
+        .execute("sp_GetStFeesDetDue_2");
+
+      console.log(`sp_GetStFeesDetDue_2 DONE [${i}]`, {
+        settlement,
+        recordsetsCount: spResult?.recordsets?.length,
+        rowsAffected: spResult?.rowsAffected,
+        returnValue: spResult?.returnValue,
+      });
+    } catch (spErr) {
+      console.error(`sp_GetStFeesDetDue_2 FAILED [${i}]`, settlement, spErr);
+      throw spErr;
+    }
   }
 
   console.log("All settlements completed successfully");
