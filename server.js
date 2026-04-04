@@ -44,7 +44,7 @@ const sqlConfig = {
     encrypt: false,
     trustServerCertificate: true,
   },
-  requestTimeout: 25000,
+  requestTimeout: 35000,
 };
 
 // ---------- NODEMAILER ----------
