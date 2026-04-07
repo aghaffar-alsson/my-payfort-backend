@@ -212,7 +212,7 @@ const {
     const apsAmount = String(Math.round(numericAmount * 100));
 
     // Safe email fallback
-    const safeEmail = String(email || "noemail@example.com").trim();
+    const safeEmail = String(email || "aghaffar@alsson.com").trim();
 
     const orderID = generateMerchantReference();
 
@@ -255,7 +255,7 @@ const {
 
     // here insert a record to keep track the merchant reference and the school id
     const pool = await sql.connect(sqlConfig);
-await pool.request()
+  await pool.request()
   .input("merchant_reference", sql.VarChar(50), orderID)
   .input("school_id", sql.Int, schoolCode)
   .input("amount", sql.Int, Number(apsAmount)) // IMPORTANT: minor units
@@ -333,11 +333,12 @@ async function logPaymentAction(payload) {
   try {
     const pool = await sql.connect(sqlConfig);
 
-    // Read student/family data from master transaction row
+    // Read original email + student/family data from master transaction row
     const trxResult = await pool.request()
       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
       .query(`
         SELECT
+          customer_email,
           student_id,
           student_name,
           cur_ygp,
@@ -358,7 +359,10 @@ async function logPaymentAction(payload) {
       .input("fort_id", sql.VarChar(50), payload.fort_id || null)
       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference || null)
       .input("amount", sql.Int, payload.amount ? Number(payload.amount) : null) // minor units from APS
-      .input("customer_email", sql.NVarChar(255), payload.customer_email || null)
+
+      // USE ORIGINAL EMAIL FROM YOUR DB, NOT APS CALLBACK
+      .input("customer_email", sql.NVarChar(255), trx.customer_email || null)
+
       .input("payment_option", sql.VarChar(50), payload.payment_option || null)
       .input("response_message", sql.NVarChar(500), payload.response_message || null)
       .input("actiondate", sql.Date, new Date())
@@ -407,13 +411,12 @@ async function logPaymentAction(payload) {
         )
       `);
 
-    console.log("Payment logged to OnlinePayfortLog with student/family info");
+    console.log("Payment logged to OnlinePayfortLog with ORIGINAL email + student/family info");
   } catch (err) {
     console.error("SQL Error in logPaymentAction:", err);
-    throw err; // IMPORTANT: bubble up so callback knows it failed
+    throw err;
   }
 }
-
 // ---------- LOG PAYMENT ACTION ----------
 async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
   const pool = await sql.connect(sqlConfig);
@@ -495,6 +498,7 @@ async function handlePayfortCallback(req, res) {
         SELECT
           school_id,
           frontend_origin,
+          customer_email,
           student_id,
           student_name,
           cur_ygp,
@@ -510,7 +514,8 @@ async function handlePayfortCallback(req, res) {
     
     const schoolId = result.recordset[0].school_id;
     const FRONTEND_URL = result.recordset[0].frontend_origin;
-    
+    const originalEmail = result.recordset[0].customer_email || "";
+
     const student_id = result.recordset[0].student_id || "";
     const student_name = result.recordset[0].student_name || "";
     const cur_ygp = result.recordset[0].cur_ygp || "";
@@ -542,7 +547,21 @@ await pool.request()
   `);
 
 if (success) {
+  // ---------- CREATE SAFE PAYLOAD ----------
+  // const trxRow = result.recordset[0];
+
+  // const safePayload = {
+  //   ...payload,
+  //   customer_email: trxRow.customer_email || payload.customer_email || "",
+  //   student_id: trxRow.student_id || null,
+  //   student_name: trxRow.student_name || "",
+  //   cur_ygp: trxRow.cur_ygp || "",
+  //   family_no: trxRow.family_no || null,
+  //   family_name: trxRow.family_name || "",
+  //   full_name: trxRow.full_name || "",
+  // }; 
   await logPaymentAction(payload);
+  // await logPaymentAction(safePayload);
 
   const merchant_reff = payload.merchant_reference;
   const fortIDD = payload.fort_id;
@@ -666,7 +685,8 @@ const redirectUrl =
   `&fort_id=${payload.fort_id || ""}` +
   `&merchant_reference=${payload.merchant_reference || ""}` +
   `&response_message=${encodeURIComponent(payload.response_message || "")}` +
-  `&customer_email=${encodeURIComponent(payload.customer_email || "")}` +
+  // `&customer_email=${encodeURIComponent(payload.customer_email || "")}` +
+  `&customer_email=${encodeURIComponent(originalEmail || "")}` +
   `&student_id=${encodeURIComponent(student_id)}` +
   `&student_name=${encodeURIComponent(student_name)}` +
   `&cur_ygp=${encodeURIComponent(cur_ygp)}`;
