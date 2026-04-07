@@ -331,6 +331,7 @@ const {
 // ---------- LOG PAYMENT ACTION ----------
 async function logPaymentAction(payload) {
   try {
+
     const pool = await sql.connect(sqlConfig);
 
     // Read original email + student/family data from master transaction row
@@ -354,6 +355,21 @@ async function logPaymentAction(payload) {
     }
 
     const trx = trxResult.recordset[0];
+    // Check for existing log to prevent duplicates Idempotency protection for log table
+    const existingLog = await pool.request()
+      .input("merchant_reference", sql.VarChar(50), payload.merchant_reference || null)
+      .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+      .query(`
+        SELECT 1
+        FROM OnlinePayfortLog
+        WHERE merchant_reference = @merchant_reference
+          AND fort_id = @fort_id
+      `);
+
+    if (existingLog.recordset.length) {
+      console.log("OnlinePayfortLog already exists, skipping duplicate insert");
+      return;
+    }
 
     await pool.request()
       .input("fort_id", sql.VarChar(50), payload.fort_id || null)
@@ -368,7 +384,7 @@ async function logPaymentAction(payload) {
       .input("actiondate", sql.Date, new Date())
       .input("emlsnt", sql.Int, 0)
 
-      // Student/family fields
+      // Student/family fields from DB, NOT from APS callback (for security and data integrity)
       .input("student_id", sql.Int, trx.student_id || null)
       .input("student_name", sql.NVarChar(255), trx.student_name || null)
       .input("cur_ygp", sql.NVarChar(100), trx.cur_ygp || null)
@@ -448,6 +464,35 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
           AND FORT_ID=@FORT_IDD_1
       `);
 
+    // Check if a record already exists for this item with the same merchant reference and fort_id
+    // If the exact confirmed APS row already exists, skip insert
+    const existsResult = await request
+      .input("CURYEAR_CHECK", sql.Int, paymentItem.curyear)
+      .input("S_CODE_CHECK", sql.VarChar, paymentItem.stid)
+      .input("FAMID_CHECK", sql.Int, paymentItem.famid)
+      .input("SCHOOLID_CHECK", sql.Int, paymentItem.schoolId)
+      .input("INSTCODE_CHECK", sql.Int, paymentItem.instCode)
+      .input("FACENAME_CHECK", sql.VarChar, paymentItem.facename)
+      .input("MERCHANT_REFF_CHECK", sql.VarChar, merchant_reff)
+      .input("FORT_IDD_CHECK", sql.VarChar, fortIDD)
+      .query(`
+        SELECT 1
+        FROM APSTRANS
+        WHERE CURYEAR = @CURYEAR_CHECK
+          AND S_CODE = @S_CODE_CHECK
+          AND FAMID = @FAMID_CHECK
+          AND SCHOOLID = @SCHOOLID_CHECK
+          AND InstCode = @INSTCODE_CHECK
+          AND FACENAME = @FACENAME_CHECK
+          AND merchant_reference = @MERCHANT_REFF_CHECK
+          AND fort_id = @FORT_IDD_CHECK
+      `);
+
+    if (existsResult.recordset.length) {
+      console.log("APSTRANS row already exists, skipping duplicate insert:", paymentItem.facename);
+      await transaction.commit();
+      return;
+    }
     // INSERT confirmed payment
     await request
       .input("PAIDAMOUNT", sql.Numeric(18,2), paymentItem.amount)
@@ -474,11 +519,476 @@ async function keepTrackPaymentAction(paymentItem, merchant_reff, fortIDD) {
     await transaction.commit();
     console.log("Payment item settled:", paymentItem.facename);
   } catch (err) {
-    await transaction.rollback();
-    console.error("SQL Error:", err);
+    try {
+      await transaction.rollback();
+    } catch (rbErr) {
+      console.error("Rollback error in keepTrackPaymentAction:", rbErr);
+    }
+    console.error("SQL Error in keepTrackPaymentAction:", err);
     throw err;
   }
 }
+// ---------- CALLBACK HANDLER ----------
+// async function handlePayfortCallback(req, res) {
+//   try {
+//     const payload = req.method === "GET" ? req.query : req.body;
+
+//     console.log("=== Payfort Callback ===", payload);
+
+//     if (!payload.signature) {
+//       return res.status(400).send("Missing signature");
+//     }
+
+//     // DB lookup to get school_id and original email + student/family data for this merchant_reference
+//     const pool = await sql.connect(sqlConfig);
+//     const result = await pool.request()
+//       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+//       .query(`
+//         SELECT
+//           school_id,
+//           frontend_origin,
+//           customer_email,
+//           student_id,
+//           student_name,
+//           cur_ygp,
+//           family_no,
+//           family_name,
+//           full_name
+//         FROM PayfortTransactions
+//         WHERE merchant_reference = @merchant_reference
+//       `);
+
+//     if (result.recordset.length === 0) {
+//       return res.status(400).send("Unknown merchant_reference");
+//     }
+
+//     const trxRow = result.recordset[0];
+
+//     const schoolId = trxRow.school_id;
+//     const FRONTEND_URL = trxRow.frontend_origin;
+
+//     // ORIGINAL values from your DB (NOT APS callback masked values)
+//     const originalEmail = trxRow.customer_email || "";
+//     const student_id = trxRow.student_id || "";
+//     const student_name = trxRow.student_name || "";
+//     const cur_ygp = trxRow.cur_ygp || "";
+//     const family_name = trxRow.family_name || "";
+//     const family_no = trxRow.family_no || 0;
+//     const full_name = trxRow.full_name || "";
+    
+//     // Verify signature with correct response phrase
+//     if (!verifySignature(payload, schoolId)) {
+//       return res.status(400).send("Invalid signature");
+//     }
+
+// // const success = payload.status === "14";
+// // const finalStatus = success ? "SUCCESS" : "FAILED";
+//     const success = payload.status === "14";
+
+//     // Helper to build redirect URL
+//     const buildRedirectUrl = (statusText, fortIdOverride = null) => {
+//       return (
+//         `${FRONTEND_URL}/checkout-result?status=${statusText}` +
+//         `&amount=${payload.amount || ""}` +
+//         `&fort_id=${fortIdOverride || payload.fort_id || ""}` +
+//         `&merchant_reference=${payload.merchant_reference || ""}` +
+//         `&response_message=${encodeURIComponent(payload.response_message || "")}` +
+//         `&customer_email=${encodeURIComponent(originalEmail)}` +
+//         `&student_id=${encodeURIComponent(student_id)}` +
+//         `&student_name=${encodeURIComponent(student_name)}` +
+//         `&cur_ygp=${encodeURIComponent(cur_ygp)}`
+//       );
+//     };
+
+//     // // Always update transaction final status and fort_id (for tracking), even if signature is valid
+//     // await pool.request()
+//     // .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+//     // .input("status", sql.VarChar(20), finalStatus)
+//     // .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+//     // .query(`
+//     //   UPDATE PayfortTransactions
+//     //   SET
+//     //     status = @status,
+//     //     fort_id = @fort_id,
+//     //     updated_at = SYSDATETIME()
+//     //   WHERE merchant_reference = @merchant_reference
+//     // `);
+
+// //In case of success, Log payment action with original email and student/family info from DB
+// // if (success) {
+// //   // ---------- CREATE SAFE PAYLOAD ----------
+// //   // const trxRow = result.recordset[0];
+
+// //   // const safePayload = {
+// //   //   ...payload,
+// //   //   customer_email: trxRow.customer_email || payload.customer_email || "",
+// //   //   student_id: trxRow.student_id || null,
+// //   //   student_name: trxRow.student_name || "",
+// //   //   cur_ygp: trxRow.cur_ygp || "",
+// //   //   family_no: trxRow.family_no || null,
+// //   //   family_name: trxRow.family_name || "",
+// //   //   full_name: trxRow.full_name || "",
+// //   // }; 
+// //   await logPaymentAction(payload);
+// //   // await logPaymentAction(safePayload);
+
+// //   const merchant_reff = payload.merchant_reference;
+// //   const fortIDD = payload.fort_id;
+
+// //   const itemsResult = await pool.request()
+// //     .input("merchantreff", sql.VarChar(50), merchant_reff)
+// //     .query(`
+// //       SELECT paymentItems 
+// //       FROM PayfortTempPaymentItems
+// //       WHERE merchant_reference = @merchantreff
+// //     `);
+
+// //   console.log("Payment items fetched from DB:", itemsResult.recordset);
+
+// //   if (!itemsResult.recordset.length) {
+// //     throw new Error("Payment items not found");
+// //   }
+
+// //   const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
+// //   console.log("Parsed paymentItems:", JSON.stringify(paymentItems, null, 2));
+// //   console.log("Merchant Reference:", merchant_reff);
+
+// //   // 1) Process each payment item individually
+// //   for (let i = 0; i < paymentItems.length; i++) {
+// //     const item = paymentItems[i];
+// //     console.log(`keepTrackPaymentAction START [${i}]`, item);
+
+// //     await keepTrackPaymentAction(item, merchant_reff, fortIDD);
+
+// //     console.log(`keepTrackPaymentAction DONE [${i}]`, item);
+// //   }
+
+// //   console.log("All payment items processed for merchant reference:", merchant_reff);
+
+// //   // 2) Build unique settlement groups
+// //   const uniqueSettlements = new Map();
+
+// //   for (let i = 0; i < paymentItems.length; i++) {
+// //     const item = paymentItems[i];
+
+// //     const famId = Number(item.famid);
+// //     const stId = Number(item.stid);
+// //     const year = Number(item.curyear);
+
+// //     console.log(`Settlement candidate [${i}]`, {
+// //       raw: item,
+// //       famId,
+// //       stId,
+// //       year,
+// //       isFamInt: Number.isInteger(famId),
+// //       isStInt: Number.isInteger(stId),
+// //       isYearInt: Number.isInteger(year),
+// //     });
+
+// //     if (!Number.isInteger(famId)) {
+// //       throw new Error(`Invalid FAMID: ${item.famid}`);
+// //     }
+
+// //     if (!Number.isInteger(stId)) {
+// //       throw new Error(`Invalid STID: ${item.stid}`);
+// //     }
+
+// //     if (!Number.isInteger(year)) {
+// //       throw new Error(`Invalid CURYEAR: ${item.curyear}`);
+// //     }
+
+// //     const key = `${famId}_${stId}_${year}`;
+
+// //     if (!uniqueSettlements.has(key)) {
+// //       uniqueSettlements.set(key, { famId, stId, year });
+// //       console.log("Added unique settlement:", key);
+// //     } else {
+// //       console.log("Skipped duplicate settlement:", key);
+// //     }
+// //   }
+
+// //   const settlements = [...uniqueSettlements.values()];
+// //   console.log("Unique settlement groups FINAL:", settlements);
+
+// //   // 3) Execute settlement for each unique group
+// //   for (let i = 0; i < settlements.length; i++) {
+// //     const settlement = settlements[i];
+
+// //     console.log(`sp_GetStFeesDetDue_2 START [${i}]`, settlement);
+
+// //     try {
+// //       const spResult = await pool.request()
+// //         .input("famid", sql.Int, settlement.famId)
+// //         .input("stid", sql.Int, settlement.stId)
+// //         .input("trgtYr", sql.Int, settlement.year)
+// //         .execute("sp_GetStFeesDetDue_2");
+
+// //       console.log(`sp_GetStFeesDetDue_2 DONE [${i}]`, {
+// //         settlement,
+// //         recordsetsCount: spResult?.recordsets?.length,
+// //         rowsAffected: spResult?.rowsAffected,
+// //         returnValue: spResult?.returnValue,
+// //       });
+// //     } catch (spErr) {
+// //       console.error(`sp_GetStFeesDetDue_2 FAILED [${i}]`, settlement, spErr);
+// //       throw spErr;
+// //     }
+// //   }
+
+// //   console.log("All settlements completed successfully");
+// // }
+
+// if (success) {
+//   // =========================================================
+//   // STEP 1: ATOMICALLY CLAIM THIS CALLBACK (PENDING -> PROCESSING)
+//   // Only ONE callback can win this update
+//   // =========================================================
+//   const claimResult = await pool.request()
+//     .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+//     .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+//     .query(`
+//       UPDATE PayfortTransactions
+//       SET
+//         status = 'PROCESSING',
+//         fort_id = ISNULL(@fort_id, fort_id),
+//         updated_at = SYSDATETIME()
+//       WHERE merchant_reference = @merchant_reference
+//         AND status = 'PENDING'
+//     `);
+
+//   const claimed = (claimResult.rowsAffected?.[0] || 0) > 0;
+
+//   // =========================================================
+//   // If not claimed, this callback is duplicate or already processed
+//   // =========================================================
+//   if (!claimed) {
+//     const existingResult = await pool.request()
+//       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+//       .query(`
+//         SELECT status, fort_id
+//         FROM PayfortTransactions
+//         WHERE merchant_reference = @merchant_reference
+//       `);
+
+//     const current = existingResult.recordset[0];
+
+//     console.log("Duplicate/already handled success callback skipped", {
+//       merchant_reference: payload.merchant_reference,
+//       currentStatus: current?.status,
+//       fort_id: current?.fort_id,
+//     });
+
+//     // If already success, return success redirect
+//     if (current?.status === "SUCCESS") {
+//       return res.redirect(302, buildRedirectUrl("success", current?.fort_id));
+//     }
+
+//     // If still processing, also redirect as success page (or you can make a special processing page later)
+//     if (current?.status === "PROCESSING") {
+//       return res.redirect(302, buildRedirectUrl("success", current?.fort_id));
+//     }
+
+//     // If posting failed previously, keep success visible to user but backend still needs admin retry
+//     if (current?.status === "POSTING_FAILED") {
+//       return res.redirect(302, buildRedirectUrl("success", current?.fort_id));
+//     }
+
+//     // Fallback
+//     return res.redirect(302, buildRedirectUrl("success", current?.fort_id));
+//   }
+
+//   // =========================================================
+//   // STEP 2: ONLY THE WINNER CONTINUES
+//   // =========================================================
+//   try {
+//     await logPaymentAction(payload);
+
+//     const merchant_reff = payload.merchant_reference;
+//     const fortIDD = payload.fort_id;
+
+//     const itemsResult = await pool.request()
+//       .input("merchantreff", sql.VarChar(50), merchant_reff)
+//       .query(`
+//         SELECT paymentItems 
+//         FROM PayfortTempPaymentItems
+//         WHERE merchant_reference = @merchantreff
+//       `);
+
+//     console.log("Payment items fetched from DB:", itemsResult.recordset);
+
+//     if (!itemsResult.recordset.length) {
+//       throw new Error("Payment items not found");
+//     }
+
+//     const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
+//     console.log("Parsed paymentItems:", JSON.stringify(paymentItems, null, 2));
+//     console.log("Merchant Reference:", merchant_reff);
+
+//     // 1) Process each payment item individually
+//     for (let i = 0; i < paymentItems.length; i++) {
+//       const item = paymentItems[i];
+//       console.log(`keepTrackPaymentAction START [${i}]`, item);
+
+//       await keepTrackPaymentAction(item, merchant_reff, fortIDD);
+
+//       console.log(`keepTrackPaymentAction DONE [${i}]`, item);
+//     }
+
+//     console.log("All payment items processed for merchant reference:", merchant_reff);
+
+//     // 2) Build unique settlement groups
+//     const uniqueSettlements = new Map();
+
+//     for (let i = 0; i < paymentItems.length; i++) {
+//       const item = paymentItems[i];
+
+//       const famId = Number(item.famid);
+//       const stId = Number(item.stid);
+//       const year = Number(item.curyear);
+
+//       console.log(`Settlement candidate [${i}]`, {
+//         raw: item,
+//         famId,
+//         stId,
+//         year,
+//         isFamInt: Number.isInteger(famId),
+//         isStInt: Number.isInteger(stId),
+//         isYearInt: Number.isInteger(year),
+//       });
+
+//       if (!Number.isInteger(famId)) {
+//         throw new Error(`Invalid FAMID: ${item.famid}`);
+//       }
+
+//       if (!Number.isInteger(stId)) {
+//         throw new Error(`Invalid STID: ${item.stid}`);
+//       }
+
+//       if (!Number.isInteger(year)) {
+//         throw new Error(`Invalid CURYEAR: ${item.curyear}`);
+//       }
+
+//       const key = `${famId}_${stId}_${year}`;
+
+//       if (!uniqueSettlements.has(key)) {
+//         uniqueSettlements.set(key, { famId, stId, year });
+//         console.log("Added unique settlement:", key);
+//       } else {
+//         console.log("Skipped duplicate settlement:", key);
+//       }
+//     }
+
+//     const settlements = [...uniqueSettlements.values()];
+//     console.log("Unique settlement groups FINAL:", settlements);
+
+//     // 3) Execute settlement for each unique group
+//     for (let i = 0; i < settlements.length; i++) {
+//       const settlement = settlements[i];
+
+//       console.log(`sp_GetStFeesDetDue_2 START [${i}]`, settlement);
+
+//       try {
+//         const spResult = await pool.request()
+//           .input("famid", sql.Int, settlement.famId)
+//           .input("stid", sql.Int, settlement.stId)
+//           .input("trgtYr", sql.Int, settlement.year)
+//           .execute("sp_GetStFeesDetDue_2");
+
+//         console.log(`sp_GetStFeesDetDue_2 DONE [${i}]`, {
+//           settlement,
+//           recordsetsCount: spResult?.recordsets?.length,
+//           rowsAffected: spResult?.rowsAffected,
+//           returnValue: spResult?.returnValue,
+//         });
+//       } catch (spErr) {
+//         console.error(`sp_GetStFeesDetDue_2 FAILED [${i}]`, settlement, spErr);
+//         throw spErr;
+//       }
+//     }
+
+//     console.log("All settlements completed successfully");
+
+//     // =========================================================
+//     // STEP 3: MARK FINAL SUCCESS
+//     // =========================================================
+//     await pool.request()
+//       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+//       .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+//       .query(`
+//         UPDATE PayfortTransactions
+//         SET
+//           status = 'SUCCESS',
+//           fort_id = ISNULL(@fort_id, fort_id),
+//           updated_at = SYSDATETIME()
+//         WHERE merchant_reference = @merchant_reference
+//       `);
+
+//   } catch (processingErr) {
+//     // =========================================================
+//     // IMPORTANT: If processing fails AFTER callback was valid,
+//     // move back to PENDING so you can safely retry manually or
+//     // let APS retry if needed.
+//     // =========================================================
+//     await pool.request()
+//       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+//       .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+//       .query(`
+//         UPDATE PayfortTransactions
+//         SET
+//           status = 'PENDING',
+//           fort_id = ISNULL(@fort_id, fort_id),
+//           updated_at = SYSDATETIME()
+//         WHERE merchant_reference = @merchant_reference
+//           AND status = 'PROCESSING'
+//       `);
+
+//     throw processingErr;
+//   }
+
+// } else {
+//   // Failed APS payment -> safe to mark FAILED
+//   await pool.request()
+//     .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+//     .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+//     .query(`
+//       UPDATE PayfortTransactions
+//       SET
+//         status = 'FAILED',
+//         fort_id = ISNULL(@fort_id, fort_id),
+//         updated_at = SYSDATETIME()
+//       WHERE merchant_reference = @merchant_reference
+//         AND status IN ('PENDING', 'PROCESSING')
+//     `);
+// }
+//     //const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+//     // const redirectUrl =
+//     //   `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
+//     //   `&amount=${payload.amount}` +
+//     //   `&fort_id=${payload.fort_id}` +
+//     //   `&merchant_reference=${payload.merchant_reference}` +
+//     //   `&response_message=${encodeURIComponent(payload.response_message || "")}` +
+//     //   `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;   
+
+// const redirectUrl =
+//   `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
+//   `&amount=${payload.amount || ""}` +
+//   `&fort_id=${payload.fort_id || ""}` +
+//   `&merchant_reference=${payload.merchant_reference || ""}` +
+//   `&response_message=${encodeURIComponent(payload.response_message || "")}` +
+//   // `&customer_email=${encodeURIComponent(payload.customer_email || "")}` +
+//   `&customer_email=${encodeURIComponent(originalEmail || "")}` +
+//   `&student_id=${encodeURIComponent(student_id)}` +
+//   `&student_name=${encodeURIComponent(student_name)}` +
+//   `&cur_ygp=${encodeURIComponent(cur_ygp)}`;
+    
+//   return res.redirect(302, redirectUrl);
+
+//   } catch (err) {
+//     console.error("Callback error:", err);
+//     return res.status(500).send("Callback error");
+//   }
+// }
 // ---------- CALLBACK HANDLER ----------
 async function handlePayfortCallback(req, res) {
   try {
@@ -490,7 +1000,7 @@ async function handlePayfortCallback(req, res) {
       return res.status(400).send("Missing signature");
     }
 
-    // DB lookup
+    // DB lookup for transaction
     const pool = await sql.connect(sqlConfig);
     const result = await pool.request()
       .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
@@ -504,202 +1014,284 @@ async function handlePayfortCallback(req, res) {
           cur_ygp,
           family_no,
           family_name,
-          full_name
+          full_name,
+          status,
+          fort_id
         FROM PayfortTransactions
         WHERE merchant_reference = @merchant_reference
       `);
+
     if (result.recordset.length === 0) {
       return res.status(400).send("Unknown merchant_reference");
     }
-    
-    const schoolId = result.recordset[0].school_id;
-    const FRONTEND_URL = result.recordset[0].frontend_origin;
-    const originalEmail = result.recordset[0].customer_email || "";
 
-    const student_id = result.recordset[0].student_id || "";
-    const student_name = result.recordset[0].student_name || "";
-    const cur_ygp = result.recordset[0].cur_ygp || "";
-    const family_name = result.recordset[0].family_name || "";
-    const family_no = result.recordset[0].family_no || 0;
-    const full_name = result.recordset[0].full_name || "";
-    
-    
-    // Verify signature with correct response phrase
+    const trxRow = result.recordset[0];
+
+    const schoolId = trxRow.school_id;
+    const FRONTEND_URL = trxRow.frontend_origin;
+
+    // ORIGINAL values from your DB (NOT APS callback masked values)
+    const originalEmail = trxRow.customer_email || "";
+    const student_id = trxRow.student_id || "";
+    const student_name = trxRow.student_name || "";
+    const cur_ygp = trxRow.cur_ygp || "";
+    const family_name = trxRow.family_name || "";
+    const family_no = trxRow.family_no || 0;
+    const full_name = trxRow.full_name || "";
+
+    // Verify signature using correct school credentials
     if (!verifySignature(payload, schoolId)) {
       return res.status(400).send("Invalid signature");
     }
 
-const success = payload.status === "14";
-const finalStatus = success ? "SUCCESS" : "FAILED";
+    const success = payload.status === "14";
 
-// Always update transaction final status
-await pool.request()
-  .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
-  .input("status", sql.VarChar(20), finalStatus)
-  .input("fort_id", sql.VarChar(50), payload.fort_id || null)
-  .query(`
-    UPDATE PayfortTransactions
-    SET
-      status = @status,
-      fort_id = @fort_id,
-      updated_at = SYSDATETIME()
-    WHERE merchant_reference = @merchant_reference
-  `);
+    // Helper to build redirect URL
+    const buildRedirectUrl = (statusText, fortIdOverride = null) => {
+      return (
+        `${FRONTEND_URL}/checkout-result?status=${statusText}` +
+        `&amount=${payload.amount || ""}` +
+        `&fort_id=${fortIdOverride || payload.fort_id || ""}` +
+        `&merchant_reference=${payload.merchant_reference || ""}` +
+        `&response_message=${encodeURIComponent(payload.response_message || "")}` +
+        `&customer_email=${encodeURIComponent(originalEmail)}` +
+        `&student_id=${encodeURIComponent(student_id)}` +
+        `&student_name=${encodeURIComponent(student_name)}` +
+        `&cur_ygp=${encodeURIComponent(cur_ygp)}`
+      );
+    };
 
-if (success) {
-  // ---------- CREATE SAFE PAYLOAD ----------
-  // const trxRow = result.recordset[0];
+    if (success) {
+      // =========================================================
+      // STEP 1: ATOMICALLY CLAIM CALLBACK (PENDING -> PROCESSING)
+      // Only ONE callback can win this
+      // =========================================================
+      const claimResult = await pool.request()
+        .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+        .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+        .query(`
+          UPDATE PayfortTransactions
+          SET
+            status = 'PROCESSING',
+            fort_id = ISNULL(@fort_id, fort_id),
+            updated_at = SYSDATETIME()
+          WHERE merchant_reference = @merchant_reference
+            AND status = 'PENDING'
+        `);
 
-  // const safePayload = {
-  //   ...payload,
-  //   customer_email: trxRow.customer_email || payload.customer_email || "",
-  //   student_id: trxRow.student_id || null,
-  //   student_name: trxRow.student_name || "",
-  //   cur_ygp: trxRow.cur_ygp || "",
-  //   family_no: trxRow.family_no || null,
-  //   family_name: trxRow.family_name || "",
-  //   full_name: trxRow.full_name || "",
-  // }; 
-  await logPaymentAction(payload);
-  // await logPaymentAction(safePayload);
+      const claimed = (claimResult.rowsAffected?.[0] || 0) > 0;
 
-  const merchant_reff = payload.merchant_reference;
-  const fortIDD = payload.fort_id;
+      // =========================================================
+      // DUPLICATE / ALREADY HANDLED CALLBACK
+      // =========================================================
+      if (!claimed) {
+        const existingResult = await pool.request()
+          .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+          .query(`
+            SELECT status, fort_id
+            FROM PayfortTransactions
+            WHERE merchant_reference = @merchant_reference
+          `);
 
-  const itemsResult = await pool.request()
-    .input("merchantreff", sql.VarChar(50), merchant_reff)
-    .query(`
-      SELECT paymentItems 
-      FROM PayfortTempPaymentItems
-      WHERE merchant_reference = @merchantreff
-    `);
+        const current = existingResult.recordset[0];
 
-  console.log("Payment items fetched from DB:", itemsResult.recordset);
+        console.log("Duplicate/already handled success callback skipped", {
+          merchant_reference: payload.merchant_reference,
+          currentStatus: current?.status,
+          fort_id: current?.fort_id,
+        });
 
-  if (!itemsResult.recordset.length) {
-    throw new Error("Payment items not found");
-  }
+        // If already success, return success redirect
+        if (current?.status === "SUCCESS") {
+          return res.redirect(302, buildRedirectUrl("success", current?.fort_id));
+        }
 
-  const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
-  console.log("Parsed paymentItems:", JSON.stringify(paymentItems, null, 2));
-  console.log("Merchant Reference:", merchant_reff);
+        // If still processing, also redirect as success page (or you can make a special processing page later)
+        if (current?.status === "PROCESSING") {
+          return res.redirect(302, buildRedirectUrl("success", current?.fort_id));
+        }
 
-  // 1) Process each payment item individually
-  for (let i = 0; i < paymentItems.length; i++) {
-    const item = paymentItems[i];
-    console.log(`keepTrackPaymentAction START [${i}]`, item);
+        // If posting failed previously, keep success visible to user but backend still needs admin retry
+        if (current?.status === "POSTING_FAILED") {
+          return res.redirect(302, buildRedirectUrl("success", current?.fort_id));
+        }
 
-    await keepTrackPaymentAction(item, merchant_reff, fortIDD);
+        // Fallback
+        return res.redirect(302, buildRedirectUrl("success", current?.fort_id));
+      }
 
-    console.log(`keepTrackPaymentAction DONE [${i}]`, item);
-  }
+      // =========================================================
+      // ONLY THE WINNER CONTINUES PROCESSING
+      // =========================================================
+      try {
+        // 1) Log payment (duplicate-safe)
+        await logPaymentAction(payload);
 
-  console.log("All payment items processed for merchant reference:", merchant_reff);
+        const merchant_reff = payload.merchant_reference;
+        const fortIDD = payload.fort_id;
 
-  // 2) Build unique settlement groups
-  const uniqueSettlements = new Map();
+        // 2) Fetch saved payment items
+        const itemsResult = await pool.request()
+          .input("merchantreff", sql.VarChar(50), merchant_reff)
+          .query(`
+            SELECT paymentItems 
+            FROM PayfortTempPaymentItems
+            WHERE merchant_reference = @merchantreff
+          `);
 
-  for (let i = 0; i < paymentItems.length; i++) {
-    const item = paymentItems[i];
+        console.log("Payment items fetched from DB:", itemsResult.recordset);
 
-    const famId = Number(item.famid);
-    const stId = Number(item.stid);
-    const year = Number(item.curyear);
+        if (!itemsResult.recordset.length) {
+          throw new Error("Payment items not found");
+        }
 
-    console.log(`Settlement candidate [${i}]`, {
-      raw: item,
-      famId,
-      stId,
-      year,
-      isFamInt: Number.isInteger(famId),
-      isStInt: Number.isInteger(stId),
-      isYearInt: Number.isInteger(year),
-    });
+        const paymentItems = JSON.parse(itemsResult.recordset[0].paymentItems);
+        console.log("Parsed paymentItems:", JSON.stringify(paymentItems, null, 2));
+        console.log("Merchant Reference:", merchant_reff);
 
-    if (!Number.isInteger(famId)) {
-      throw new Error(`Invalid FAMID: ${item.famid}`);
+        // 3) Process each payment item individually
+        for (let i = 0; i < paymentItems.length; i++) {
+          const item = paymentItems[i];
+          console.log(`keepTrackPaymentAction START [${i}]`, item);
+
+          await keepTrackPaymentAction(item, merchant_reff, fortIDD);
+
+          console.log(`keepTrackPaymentAction DONE [${i}]`, item);
+        }
+
+        console.log("All payment items processed for merchant reference:", merchant_reff);
+
+        // 4) Build unique settlement groups
+        const uniqueSettlements = new Map();
+
+        for (let i = 0; i < paymentItems.length; i++) {
+          const item = paymentItems[i];
+
+          const famId = Number(item.famid);
+          const stId = Number(item.stid);
+          const year = Number(item.curyear);
+
+          console.log(`Settlement candidate [${i}]`, {
+            raw: item,
+            famId,
+            stId,
+            year,
+            isFamInt: Number.isInteger(famId),
+            isStInt: Number.isInteger(stId),
+            isYearInt: Number.isInteger(year),
+          });
+
+          if (!Number.isInteger(famId)) {
+            throw new Error(`Invalid FAMID: ${item.famid}`);
+          }
+
+          if (!Number.isInteger(stId)) {
+            throw new Error(`Invalid STID: ${item.stid}`);
+          }
+
+          if (!Number.isInteger(year)) {
+            throw new Error(`Invalid CURYEAR: ${item.curyear}`);
+          }
+
+          const key = `${famId}_${stId}_${year}`;
+
+          if (!uniqueSettlements.has(key)) {
+            uniqueSettlements.set(key, { famId, stId, year });
+            console.log("Added unique settlement:", key);
+          } else {
+            console.log("Skipped duplicate settlement:", key);
+          }
+        }
+
+        const settlements = [...uniqueSettlements.values()];
+        console.log("Unique settlement groups FINAL:", settlements);
+
+        // 5) Execute settlement SP for each unique group
+        for (let i = 0; i < settlements.length; i++) {
+          const settlement = settlements[i];
+
+          console.log(`sp_GetStFeesDetDue_2 START [${i}]`, settlement);
+
+          try {
+            const spResult = await pool.request()
+              .input("famid", sql.Int, settlement.famId)
+              .input("stid", sql.Int, settlement.stId)
+              .input("trgtYr", sql.Int, settlement.year)
+              .execute("sp_GetStFeesDetDue_2");
+
+            console.log(`sp_GetStFeesDetDue_2 DONE [${i}]`, {
+              settlement,
+              recordsetsCount: spResult?.recordsets?.length,
+              rowsAffected: spResult?.rowsAffected,
+              returnValue: spResult?.returnValue,
+            });
+          } catch (spErr) {
+            console.error(`sp_GetStFeesDetDue_2 FAILED [${i}]`, settlement, spErr);
+            throw spErr;
+          }
+        }
+
+        console.log("All settlements completed successfully");
+
+        // 6) Final success
+        await pool.request()
+          .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+          .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+          .query(`
+            UPDATE PayfortTransactions
+            SET
+              status = 'SUCCESS',
+              fort_id = ISNULL(@fort_id, fort_id),
+              updated_at = SYSDATETIME()
+            WHERE merchant_reference = @merchant_reference
+          `);
+
+      } catch (processingErr) {
+        console.error("Processing failed AFTER successful APS payment:", processingErr);
+
+        // APS succeeded, but internal posting failed => mark POSTING_FAILED
+        await pool.request()
+          .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+          .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+          .query(`
+            UPDATE PayfortTransactions
+            SET
+              status = 'POSTING_FAILED',
+              fort_id = ISNULL(@fort_id, fort_id),
+              updated_at = SYSDATETIME()
+            WHERE merchant_reference = @merchant_reference
+              AND status = 'PROCESSING'
+          `);
+
+        throw processingErr;
+      }
+
+      return res.redirect(302, buildRedirectUrl("success"));
     }
 
-    if (!Number.isInteger(stId)) {
-      throw new Error(`Invalid STID: ${item.stid}`);
-    }
+    // =========================================================
+    // APS PAYMENT FAILED
+    // =========================================================
+    await pool.request()
+      .input("merchant_reference", sql.VarChar(50), payload.merchant_reference)
+      .input("fort_id", sql.VarChar(50), payload.fort_id || null)
+      .query(`
+        UPDATE PayfortTransactions
+        SET
+          status = 'FAILED',
+          fort_id = ISNULL(@fort_id, fort_id),
+          updated_at = SYSDATETIME()
+        WHERE merchant_reference = @merchant_reference
+          AND status IN ('PENDING', 'PROCESSING')
+      `);
 
-    if (!Number.isInteger(year)) {
-      throw new Error(`Invalid CURYEAR: ${item.curyear}`);
-    }
-
-    const key = `${famId}_${stId}_${year}`;
-
-    if (!uniqueSettlements.has(key)) {
-      uniqueSettlements.set(key, { famId, stId, year });
-      console.log("Added unique settlement:", key);
-    } else {
-      console.log("Skipped duplicate settlement:", key);
-    }
-  }
-
-  const settlements = [...uniqueSettlements.values()];
-  console.log("Unique settlement groups FINAL:", settlements);
-
-  // 3) Execute settlement for each unique group
-  for (let i = 0; i < settlements.length; i++) {
-    const settlement = settlements[i];
-
-    console.log(`sp_GetStFeesDetDue_2 START [${i}]`, settlement);
-
-    try {
-      const spResult = await pool.request()
-        .input("famid", sql.Int, settlement.famId)
-        .input("stid", sql.Int, settlement.stId)
-        .input("trgtYr", sql.Int, settlement.year)
-        .execute("sp_GetStFeesDetDue_2");
-
-      console.log(`sp_GetStFeesDetDue_2 DONE [${i}]`, {
-        settlement,
-        recordsetsCount: spResult?.recordsets?.length,
-        rowsAffected: spResult?.rowsAffected,
-        returnValue: spResult?.returnValue,
-      });
-    } catch (spErr) {
-      console.error(`sp_GetStFeesDetDue_2 FAILED [${i}]`, settlement, spErr);
-      throw spErr;
-    }
-  }
-
-  console.log("All settlements completed successfully");
-}
-
-    //const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
-
-    // const redirectUrl =
-    //   `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
-    //   `&amount=${payload.amount}` +
-    //   `&fort_id=${payload.fort_id}` +
-    //   `&merchant_reference=${payload.merchant_reference}` +
-    //   `&response_message=${encodeURIComponent(payload.response_message || "")}` +
-    //   `&customer_email=${encodeURIComponent(payload.customer_email || "")}`;   
-
-const redirectUrl =
-  `${FRONTEND_URL}/checkout-result?status=${success ? "success" : "failed"}` +
-  `&amount=${payload.amount || ""}` +
-  `&fort_id=${payload.fort_id || ""}` +
-  `&merchant_reference=${payload.merchant_reference || ""}` +
-  `&response_message=${encodeURIComponent(payload.response_message || "")}` +
-  // `&customer_email=${encodeURIComponent(payload.customer_email || "")}` +
-  `&customer_email=${encodeURIComponent(originalEmail || "")}` +
-  `&student_id=${encodeURIComponent(student_id)}` +
-  `&student_name=${encodeURIComponent(student_name)}` +
-  `&cur_ygp=${encodeURIComponent(cur_ygp)}`;
-    
-
-    return res.redirect(302, redirectUrl);
+    return res.redirect(302, buildRedirectUrl("failed"));
 
   } catch (err) {
     console.error("Callback error:", err);
     return res.status(500).send("Callback error");
   }
 }
-
 
 // const __filename = fileURLToPath(import.meta.url);
 // const __dirname = path.dirname(__filename);
@@ -863,20 +1455,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // ---------- END OF FILE ----------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
