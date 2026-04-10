@@ -197,6 +197,21 @@ const {
       "https://fees.family.alsson.app",
     ];
 
+  app.use(cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // mobile apps / postman
+  
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+  
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+  }));
+      
     if (!allowedOrigins.includes(frontendOrigin)) {
       return res.status(400).json({ error: "Invalid frontend origin" });
     }
