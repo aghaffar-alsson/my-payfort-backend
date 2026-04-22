@@ -1472,22 +1472,28 @@ app.post("/payfort-callback", handlePayfortCallback);
 app.get("/api/payment-status/:merchant_reference", async (req, res) => {
   try {
     const { merchant_reference } = req.params;
-
     const pool = await sql.connect(sqlConfig);
-
-    const result = await pool.request()
+    const trx = await pool.request()
       .input("merchant_reference", sql.VarChar(50), merchant_reference)
       .query(`
-        SELECT status, fort_id, amount
+        SELECT
+          status,
+          fort_id,
+          amount,
+          customer_email,
+          student_id,
+          student_name,
+          cur_ygp
         FROM PayfortTransactions
         WHERE merchant_reference = @merchant_reference
       `);
 
-    if (!result.recordset.length) {
+    if (!trx.recordset.length) {
       return res.status(404).json({ error: "Not found" });
     }
 
-    res.json(result.recordset[0]);
+    res.json(trx.recordset[0]);
+
   } catch (err) {
     console.error("Status API error:", err);
     res.status(500).json({ error: "Internal error" });
