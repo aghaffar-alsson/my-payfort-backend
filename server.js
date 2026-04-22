@@ -1282,7 +1282,8 @@ async function handlePayfortCallback(req, res) {
         throw processingErr;
       }
 
-      return res.redirect(302, buildRedirectUrl("success"));
+      //return res.redirect(302, buildRedirectUrl("success"));
+      return res.redirect(302,`${FRONTEND_URL}/processing?merchant_reference=${payload.merchant_reference}`);
     }
 
     // =========================================================
@@ -1301,7 +1302,8 @@ async function handlePayfortCallback(req, res) {
           AND status IN ('PENDING', 'PROCESSING')
       `);
 
-    return res.redirect(302, buildRedirectUrl("failed"));
+    //return res.redirect(302, buildRedirectUrl("failed"));
+    return res.redirect(302,`${FRONTEND_URL}/processing?merchant_reference=${payload.merchant_reference}`);    
 
   } catch (err) {
     console.error("Callback error:", err);
@@ -1466,6 +1468,31 @@ app.post("/api/log-payment", async (req, res) => {
 app.get("/payfort-callback", handlePayfortCallback);
 app.post("/payfort-callback", handlePayfortCallback);
 
+//new api end point
+app.get("/api/payment-status/:merchant_reference", async (req, res) => {
+  try {
+    const { merchant_reference } = req.params;
+
+    const pool = await sql.connect(sqlConfig);
+
+    const result = await pool.request()
+      .input("merchant_reference", sql.VarChar(50), merchant_reference)
+      .query(`
+        SELECT status, fort_id, amount
+        FROM PayfortTransactions
+        WHERE merchant_reference = @merchant_reference
+      `);
+
+    if (!result.recordset.length) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    res.json(result.recordset[0]);
+  } catch (err) {
+    console.error("Status API error:", err);
+    res.status(500).json({ error: "Internal error" });
+  }
+});
 // ---------- START SERVER ----------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
