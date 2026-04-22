@@ -252,8 +252,8 @@ const {
       currency: String(currency).trim(),
       customer_email: safeEmail,
       eci: "ECOMMERCE",
-      // return_url: `${PUBLIC_URL}/payfort-callback`,
-      return_url: 'https://fees.family.alsson.app/processing',
+      return_url: `${PUBLIC_URL}/payfort-callback`,
+      //return_url: 'https://fees.family.alsson.app/processing',
     };
 
     console.log("=== CREATE FORM PAYLOAD DEBUG ===");
