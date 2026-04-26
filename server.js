@@ -27,13 +27,11 @@ fs.ensureDirSync(RECEIPTS_DIR);
 app.use("/receipts", express.static(RECEIPTS_DIR));
 app.use("/public", express.static(path.join(__dirname, "public")));
 
-// ---------- MIDDLEWARE ----------
-app.use(cors());
+//app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.json());
 
-// 🔐 Optional security whitelist
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -41,20 +39,28 @@ const allowedOrigins = [
   "https://fees.family.alsson.app",
 ];
 
+app.use((req, res, next) => {
+  console.log("Origin:", req.headers.origin);
+  next();
+});
+
 app.use(cors({
-origin: function (origin, callback) {
-  if (!origin) return callback(null, true); // mobile apps / postman
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
 
-  if (allowedOrigins.includes(origin)) {
-    return callback(null, true);
-  }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
 
-  return callback(new Error("Not allowed by CORS"));
-},
-methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-allowedHeaders: ["Content-Type", "Authorization"],
-credentials: true
+    console.error("CORS BLOCKED:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true
 }));
+
+app.options("*", cors());
+
+app.use(express.json());
 
 // ---------- SQL CONFIG ----------
 const sqlConfig = {
