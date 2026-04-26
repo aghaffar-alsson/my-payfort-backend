@@ -222,7 +222,7 @@ function verifySignature(params, schoolId) {
   console.log("Generated:", generatedSignature);
   console.log("Received:", receivedSignature);
   //Logging the entire payload and critical values for debugging
-  console.log("APS PAYLOAD:", payload);
+  //console.log("APS PAYLOAD:", payload);
   console.log("STRING TO HASH:", stringToHash);
   console.log("GENERATED:", generatedSignature);
   console.log("RECEIVED:", receivedSignature);
