@@ -328,12 +328,25 @@ const {
 
   // here insert a record to keep track the merchant reference and the school id
   let pool;
+
   try {
-    const pool = await sql.connect(sqlConfig);
+    pool = await sql.connect(sqlConfig);
   } catch (err) {
     console.error("SQL CONNECTION FAILED:", err);
-    throw err;
+    return res.status(500).json({
+      error: "Database connection failed",
+      details: err.message
+    });
   }
+
+  // 🚨 HARD GUARD
+  if (!pool) {
+    return res.status(500).json({
+      error: "Database pool is undefined"
+    });
+  }
+
+await pool.request()
   await pool.request()
   .input("merchant_reference", sql.VarChar(50), orderID)
   .input("school_id", sql.Int, schoolCode)
