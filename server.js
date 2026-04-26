@@ -327,6 +327,7 @@ const {
     console.log("Payload AFTER signature:", formPayLoad);
 
   // here insert a record to keep track the merchant reference and the school id
+  let pool;
   try {
     const pool = await sql.connect(sqlConfig);
   } catch (err) {
